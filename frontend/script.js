@@ -108,7 +108,9 @@ setTimeout(() => {
 document.addEventListener("DOMContentLoaded", function() {
   initEventListeners();
   notifyFrameHeight();
-  showLoginView();
+  if (!state.user) {
+    showLoginView();
+  }
 });
 
 function handleBackendSync(args) {
@@ -153,14 +155,14 @@ function handleBackendSync(args) {
     sendToStreamlit("clear_download_payload");
   }
 
-  updateCloudSyncUI();
-  updateUserInfoUI();
-  renderDashboard();
-  renderDevicesTable();
-  renderWarrantiesTable();
-  renderNotificationsList();
-  renderReportsView();
-  notifyFrameHeight();
+  try { updateCloudSyncUI(); } catch (e) { console.warn("updateCloudSyncUI:", e); }
+  try { updateUserInfoUI(); } catch (e) { console.warn("updateUserInfoUI:", e); }
+  try { renderDashboard(); } catch (e) { console.warn("renderDashboard:", e); }
+  try { renderDevicesTable(); } catch (e) { console.warn("renderDevicesTable:", e); }
+  try { renderWarrantiesTable(); } catch (e) { console.warn("renderWarrantiesTable:", e); }
+  try { renderNotificationsList(); } catch (e) { console.warn("renderNotificationsList:", e); }
+  try { renderReportsView(); } catch (e) { console.warn("renderReportsView:", e); }
+  try { notifyFrameHeight(); } catch (e) { console.warn("notifyFrameHeight:", e); }
 }
 
 // =========================================================================
@@ -301,14 +303,18 @@ function switchTab(tabName) {
 }
 
 function showLoginView() {
-  document.getElementById("login-view").style.display = "flex";
-  document.getElementById("app-view").style.display = "none";
+  const loginView = document.getElementById("login-view");
+  const appView = document.getElementById("app-view");
+  if (loginView) loginView.style.display = "flex";
+  if (appView) appView.style.display = "none";
   notifyFrameHeight();
 }
 
 function showAppView() {
-  document.getElementById("login-view").style.display = "none";
-  document.getElementById("app-view").style.display = "block";
+  const loginView = document.getElementById("login-view");
+  const appView = document.getElementById("app-view");
+  if (loginView) loginView.style.display = "none";
+  if (appView) appView.style.display = "block";
   switchTab(state.activeTab || "dashboard");
   notifyFrameHeight();
 }

@@ -82,14 +82,17 @@ def handle_component_actions(component_event: dict):
         email = payload.get("email")
         password = payload.get("password")
         success, msg, user_dict = auth_service.sign_in(email, password)
+        logger.info(f"Auth sign_in result: success={success}, msg='{msg}', user={user_dict.get('email') if user_dict else None}")
         if success and user_dict:
             st.session_state["user"] = user_dict
             st.session_state["auth_error"] = None
             excel_db.log_activity(email, "User Login", "AUTH", f"User authenticated via Firebase.")
             st.session_state["toast_message"] = ("success", f"Welcome back, {user_dict.get('display_name')}!")
+            logger.info(f"User {email} successfully authenticated! Switching to dashboard.")
         else:
             st.session_state["auth_error"] = msg
             st.session_state["toast_message"] = ("error", msg)
+            logger.warning(f"Login failed for {email}: {msg}")
         st.rerun()
 
     # 2. Logout Action
