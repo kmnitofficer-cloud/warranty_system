@@ -13,7 +13,7 @@ from typing import Optional, Dict, Any, Tuple
 
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
+from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload, MediaIoBaseUpload
 from googleapiclient.errors import HttpError
 
 import config
@@ -256,6 +256,108 @@ class GoogleDriveService:
                     self._last_sync_status = f"Update Failed: {str(e)}"
                     return False
         return False
+
+    def download_file_bytes(self, file_id: str) -> Optional[bytes]:
+        """Downloads a file directly into memory from Google Drive without touching local disk."""
+        service = self.get_service()
+        if not service:
+            return None
+
+        try:
+            request = service.files().get_media(fileId=file_id)
+            fh = io.BytesIO()
+            downloader = MediaIoBaseDownload(fh, request)
+            done = False
+            while not done:
+                _, done = downloader.next_chunk()
+
+            self._last_sync_status = "Synced from Google Drive (Memory)"
+            logger.info(f"Downloaded file {file_id} from Google Drive into memory ({len(fh.getvalue())} bytes)")
+            return fh.getvalue()
+        except Exception as e:
+            logger.error(f"Error downloading file {file_id} from Google Drive into memory: {e}")
+            self._last_sync_status = f"Download Failed: {str(e)}"
+            return None
+
+    def upload_file_bytes(self, data: bytes, filename: str) -> Optional[str]:
+        """Uploads an in-memory byte buffer as a new file in Google Drive."""
+        service = self.get_service()
+        if not service:
+            return None
+
+        try:
+            file_metadata = {
+                "name": filename,
+                "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            }
+            media = MediaIoBaseUpload(
+                io.BytesIO(data),
+                mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                resumable=True
+            )
+            created_file = service.files().create(
+                body=file_metadata,
+                media_body=media,
+                fields="id, name"
+            ).execute()
+
+            self._cached_file_id = created_file.get("id")
+            self._last_sync_status = "Uploaded to Google Drive (Memory)"
+            logger.info(f"Created file {filename} in Google Drive from memory with ID: {self._cached_file_id}")
+            return self._cached_file_id
+        except Exception as e:
+            logger.error(f"Error uploading file {filename} to Google Drive from memory: {e}")
+            self._last_sync_status = f"Upload Failed: {str(e)}"
+            return None
+
+    def update_file_bytes(self, file_id: str, data: bytes) -> bool:
+        """Updates the content of an existing file in Google Drive from an in-memory byte buffer."""
+        service = self.get_service()
+        if not service:
+            return False
+
+        import time
+        for attempt in range(1, 4):
+            try:
+                media = MediaIoBaseUpload(
+                    io.BytesIO(data),
+                    mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    resumable=True
+                )
+                service.files().update(
+                    fileId=file_id,
+                    media_body=media
+                ).execute()
+
+                self._last_sync_status = "Updated in Google Drive (Memory)"
+                logger.info(f"Updated file {file_id} in Google Drive from memory ({len(data)} bytes)")
+                return True
+            except Exception as e:
+                logger.warning(f"Attempt {attempt}/3 failed updating Google Drive file from memory: {e}")
+                if attempt < 3:
+                    time.sleep(1.0)
+                else:
+                    logger.error(f"Error updating file {file_id} in Google Drive from memory after 3 attempts: {e}")
+                    self._last_sync_status = f"Update Failed: {str(e)}"
+                    return False
+        return False
+
+    def sync_file_bytes(self, data: bytes, filename: str) -> Tuple[bool, str, Optional[str]]:
+        """Synchronizes an in-memory workbook directly with Google Drive."""
+        if not self.is_configured():
+            return False, "Google Drive service account is not configured.", None
+
+        file_id = self._cached_file_id or self.find_file(filename)
+        if file_id:
+            success = self.update_file_bytes(file_id, data)
+            if success:
+                return True, f"Successfully synchronized with Google Drive (File ID: {file_id[:8]}...).", file_id
+            return False, "Failed to update file in Google Drive.", file_id
+        else:
+            new_id = self.upload_file_bytes(data, filename)
+            if new_id:
+                return True, f"Successfully created database in Google Drive (File ID: {new_id[:8]}...).", new_id
+            return False, "Failed to upload new database to Google Drive.", None
 
     def sync_file(self, local_path: Path, filename: Optional[str] = None) -> Tuple[bool, str]:
         """

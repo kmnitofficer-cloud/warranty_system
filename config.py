@@ -77,7 +77,7 @@ def _load_secret(key: str, default: str = "") -> str:
 
 
 # Firebase Configuration
-FIREBASE_WEB_API_KEY = _load_secret("FIREBASE_WEB_API_KEY", "AIzaSyC8s9oRsWxzExlhjvIZqVoYZBsjJyG47ts")
+FIREBASE_WEB_API_KEY = _load_secret("FIREBASE_WEB_API_KEY", "")
 FIREBASE_AUTH_DOMAIN = _load_secret("FIREBASE_AUTH_DOMAIN", "kmn-it-warranty.firebaseapp.com")
 FIREBASE_PROJECT_ID = _load_secret("FIREBASE_PROJECT_ID", "kmn-it-warranty")
 FIREBASE_STORAGE_BUCKET = _load_secret("FIREBASE_STORAGE_BUCKET", "kmn-it-warranty.firebasestorage.app")
@@ -86,23 +86,19 @@ FIREBASE_APP_ID = _load_secret("FIREBASE_APP_ID", "1:270307773370:web:dd7d54f418
 FIREBASE_MEASUREMENT_ID = _load_secret("FIREBASE_MEASUREMENT_ID", "G-RNJ3CP4ECJ")
 FIREBASE_SERVICE_ACCOUNT_FILE = CREDENTIALS_DIR / "firebase_admin.json"
 
-# Demo Credentials (used for instant evaluation and testing when Firebase API Key is not yet set)
-DEMO_USERS = {
-    "admin@equipguard.io": {
-        "password": "Password123!",
-        "name": "Alex Mercer",
-        "role": "System Administrator",
-        "department": "IT Operations",
-        "avatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces"
-    },
-    "manager@equipguard.io": {
-        "password": "Password123!",
-        "name": "Sarah Connor",
-        "role": "IT Asset Manager",
-        "department": "IT Operations",
-        "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop&crop=faces"
+def get_firebase_config() -> dict:
+    return {
+        "apiKey": FIREBASE_WEB_API_KEY,
+        "authDomain": FIREBASE_AUTH_DOMAIN,
+        "projectId": FIREBASE_PROJECT_ID,
+        "storageBucket": FIREBASE_STORAGE_BUCKET,
+        "messagingSenderId": FIREBASE_MESSAGING_SENDER_ID,
+        "appId": FIREBASE_APP_ID,
+        "measurementId": FIREBASE_MEASUREMENT_ID
     }
-}
+
+# Demo Credentials (Removed - Real Firebase Authentication required)
+DEMO_USERS = {}
 
 # Device Categories
 DEVICE_CATEGORIES = [

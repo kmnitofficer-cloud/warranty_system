@@ -38,7 +38,8 @@ class FirebaseAuthService:
 
     def sign_in(self, email: str, password: str) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
         """
-        Authenticate user with email and password.
+        Authenticate user with email and password via Firebase Authentication.
+        Strict verification: wrong passwords are NEVER accepted.
         Returns: (success: bool, message: str, user_dict: Optional[dict])
         """
         email = (email or "").strip().lower()
@@ -47,103 +48,49 @@ class FirebaseAuthService:
         if not email or not password:
             return False, "Email and password are required.", None
 
-        # If real Firebase API key is configured, use Firebase REST API
-        if self.is_configured():
-            try:
-                payload = {
-                    "email": email,
-                    "password": password,
-                    "returnSecureToken": True
-                }
-                params = {"key": self.api_key}
-                response = requests.post(FIREBASE_AUTH_SIGNIN_URL, params=params, json=payload, timeout=10)
-                data = response.json()
+        if not self.is_configured():
+            return False, "Firebase Authentication is not configured. Please provide a valid FIREBASE_WEB_API_KEY in your Streamlit Secrets.", None
 
-                if response.status_code == 200:
-                    display_name = data.get("displayName") or email.split("@")[0].title()
-                    user_data = {
-                        "uid": data.get("localId"),
-                        "email": data.get("email", email),
-                        "display_name": display_name,
-                        "role": "Administrator" if "admin" in email else "Asset Manager",
-                        "department": "IT Operations",
-                        "avatar": f"https://api.dicebear.com/7.x/initials/svg?seed={display_name}",
-                        "id_token": data.get("idToken"),
-                        "refresh_token": data.get("refreshToken"),
-                        "expires_in": data.get("expiresIn"),
-                        "is_authenticated": True,
-                        "auth_mode": "firebase",
-                        "last_login": datetime.now().isoformat()
-                    }
-                    return True, "Login successful via Firebase Authentication.", user_data
-                else:
-                    error_info = data.get("error", {})
-                    error_msg = error_info.get("message", "Authentication failed.")
-                    # If this is a known demo account, fall back gracefully to demo credentials so testing is never blocked
-                    if email in self.local_users_store and self.local_users_store[email]["password"] == password:
-                        user_entry = self.local_users_store[email]
-                        user_data = {
-                            "uid": f"demo-user-{hash(email) % 100000}",
-                            "email": email,
-                            "display_name": user_entry.get("name", email.split("@")[0].title()),
-                            "role": user_entry.get("role", "Administrator"),
-                            "department": user_entry.get("department", "IT Operations"),
-                            "avatar": user_entry.get("avatar", f"https://api.dicebear.com/7.x/initials/svg?seed={email}"),
-                            "id_token": "demo-jwt-token-authenticated",
-                            "is_authenticated": True,
-                            "auth_mode": "demo_fallback",
-                            "last_login": datetime.now().isoformat()
-                        }
-                        return True, "Login successful (Demo Mode).", user_data
+        try:
+            payload = {
+                "email": email,
+                "password": password,
+                "returnSecureToken": True
+            }
+            params = {"key": self.api_key}
+            response = requests.post(FIREBASE_AUTH_SIGNIN_URL, params=params, json=payload, timeout=10)
+            data = response.json()
 
-                    friendly_msg = self._translate_error(error_msg)
-                    return False, friendly_msg, None
-
-            except requests.RequestException as e:
-                logger.error(f"Network error during Firebase auth: {e}")
-                # Offline / network fallback for demo users
-                if email in self.local_users_store and self.local_users_store[email]["password"] == password:
-                    user_entry = self.local_users_store[email]
-                    user_data = {
-                        "uid": f"demo-user-{hash(email) % 100000}",
-                        "email": email,
-                        "display_name": user_entry.get("name", email.split("@")[0].title()),
-                        "role": user_entry.get("role", "Administrator"),
-                        "department": user_entry.get("department", "IT Operations"),
-                        "avatar": user_entry.get("avatar", f"https://api.dicebear.com/7.x/initials/svg?seed={email}"),
-                        "id_token": "demo-jwt-token-authenticated",
-                        "is_authenticated": True,
-                        "auth_mode": "demo_offline",
-                        "last_login": datetime.now().isoformat()
-                    }
-                    return True, "Login successful (Demo Mode).", user_data
-                return False, f"Network error connecting to Firebase: {str(e)}", None
-
-        # Fallback to Demo / Local Authentication mode
-        if email in self.local_users_store:
-            user_entry = self.local_users_store[email]
-            if user_entry["password"] == password:
+            if response.status_code == 200:
+                display_name = data.get("displayName") or email.split("@")[0].title()
                 user_data = {
-                    "uid": f"demo-user-{hash(email) % 100000}",
-                    "email": email,
-                    "display_name": user_entry.get("name", email.split("@")[0].title()),
-                    "role": user_entry.get("role", "Asset Manager"),
-                    "department": user_entry.get("department", "IT Operations"),
-                    "avatar": user_entry.get("avatar", f"https://api.dicebear.com/7.x/initials/svg?seed={email}"),
-                    "id_token": "demo-jwt-token-authenticated",
+                    "uid": data.get("localId"),
+                    "email": data.get("email", email),
+                    "display_name": display_name,
+                    "role": "Administrator" if "admin" in email else "Asset Manager",
+                    "department": "IT Operations",
+                    "avatar": f"https://api.dicebear.com/7.x/initials/svg?seed={display_name}",
+                    "id_token": data.get("idToken"),
+                    "refresh_token": data.get("refreshToken"),
+                    "expires_in": data.get("expiresIn"),
                     "is_authenticated": True,
-                    "auth_mode": "demo",
+                    "auth_mode": "firebase",
                     "last_login": datetime.now().isoformat()
                 }
-                return True, "Login successful (Demo Mode).", user_data
+                return True, "Login successful via Firebase Authentication.", user_data
             else:
-                return False, "Invalid password. Please check your credentials.", None
+                error_info = data.get("error", {})
+                error_msg = error_info.get("message", "Authentication failed.")
+                friendly_msg = self._translate_error(error_msg)
+                return False, friendly_msg, None
 
-        return False, "User not found. Use a demo account or sign up a new account.", None
+        except requests.RequestException as e:
+            logger.error(f"Network error during Firebase auth: {e}")
+            return False, f"Network error connecting to Firebase: {str(e)}", None
 
     def sign_up(self, email: str, password: str, display_name: Optional[str] = None) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
         """
-        Register a new user with email and password.
+        Register a new user with email and password via Firebase Authentication.
         Returns: (success: bool, message: str, user_dict: Optional[dict])
         """
         email = (email or "").strip().lower()
@@ -156,89 +103,65 @@ class FirebaseAuthService:
         if len(password) < 6:
             return False, "Password must be at least 6 characters long.", None
 
-        if self.is_configured():
-            try:
-                payload = {
-                    "email": email,
-                    "password": password,
-                    "returnSecureToken": True
+        if not self.is_configured():
+            return False, "Firebase Authentication is not configured. Please provide a valid FIREBASE_WEB_API_KEY in your Streamlit Secrets.", None
+
+        try:
+            payload = {
+                "email": email,
+                "password": password,
+                "returnSecureToken": True
+            }
+            params = {"key": self.api_key}
+            response = requests.post(FIREBASE_AUTH_SIGNUP_URL, params=params, json=payload, timeout=10)
+            data = response.json()
+
+            if response.status_code == 200:
+                user_data = {
+                    "uid": data.get("localId"),
+                    "email": data.get("email", email),
+                    "display_name": display_name,
+                    "role": "Asset Manager",
+                    "department": "IT Operations",
+                    "avatar": f"https://api.dicebear.com/7.x/initials/svg?seed={display_name}",
+                    "id_token": data.get("idToken"),
+                    "refresh_token": data.get("refreshToken"),
+                    "is_authenticated": True,
+                    "auth_mode": "firebase",
+                    "last_login": datetime.now().isoformat()
                 }
-                params = {"key": self.api_key}
-                response = requests.post(FIREBASE_AUTH_SIGNUP_URL, params=params, json=payload, timeout=10)
-                data = response.json()
-
-                if response.status_code == 200:
-                    user_data = {
-                        "uid": data.get("localId"),
-                        "email": data.get("email", email),
-                        "display_name": display_name,
-                        "role": "Asset Manager",
-                        "department": "IT Operations",
-                        "avatar": f"https://api.dicebear.com/7.x/initials/svg?seed={display_name}",
-                        "id_token": data.get("idToken"),
-                        "refresh_token": data.get("refreshToken"),
-                        "is_authenticated": True,
-                        "auth_mode": "firebase",
-                        "last_login": datetime.now().isoformat()
-                    }
-                    return True, "Registration successful via Firebase Authentication.", user_data
-                else:
-                    error_info = data.get("error", {})
-                    error_msg = error_info.get("message", "Registration failed.")
-                    return False, self._translate_error(error_msg), None
-            except requests.RequestException as e:
-                return False, f"Network error during registration: {str(e)}", None
-
-        # Demo mode user registration
-        if email in self.local_users_store:
-            return False, "An account with this email already exists.", None
-
-        self.local_users_store[email] = {
-            "password": password,
-            "name": display_name,
-            "role": "Asset Manager",
-            "department": "IT Operations",
-            "avatar": f"https://api.dicebear.com/7.x/initials/svg?seed={display_name}"
-        }
-
-        user_data = {
-            "uid": f"demo-user-{hash(email) % 100000}",
-            "email": email,
-            "display_name": display_name,
-            "role": "Asset Manager",
-            "department": "IT Operations",
-            "avatar": f"https://api.dicebear.com/7.x/initials/svg?seed={display_name}",
-            "id_token": "demo-jwt-token-authenticated",
-            "is_authenticated": True,
-            "auth_mode": "demo",
-            "last_login": datetime.now().isoformat()
-        }
-        return True, "Account registered successfully (Demo Mode).", user_data
+                return True, "Registration successful via Firebase Authentication.", user_data
+            else:
+                error_info = data.get("error", {})
+                error_msg = error_info.get("message", "Registration failed.")
+                return False, self._translate_error(error_msg), None
+        except requests.RequestException as e:
+            return False, f"Network error during registration: {str(e)}", None
 
     def reset_password(self, email: str) -> Tuple[bool, str]:
-        """Send password reset email."""
+        """Send password reset email via Firebase Authentication."""
         email = (email or "").strip().lower()
         if not email:
             return False, "Please enter your email address."
 
-        if self.is_configured():
-            try:
-                payload = {
-                    "requestType": "PASSWORD_RESET",
-                    "email": email
-                }
-                params = {"key": self.api_key}
-                response = requests.post(FIREBASE_AUTH_RESET_URL, params=params, json=payload, timeout=10)
-                if response.status_code == 200:
-                    return True, f"Password reset instructions have been sent to {email}."
-                else:
-                    data = response.json()
-                    error_msg = data.get("error", {}).get("message", "Could not send reset email.")
-                    return False, self._translate_error(error_msg)
-            except Exception as e:
-                return False, f"Error requesting password reset: {e}"
+        if not self.is_configured():
+            return False, "Firebase Authentication is not configured. Please set FIREBASE_WEB_API_KEY in Streamlit Secrets."
 
-        return True, f"Password reset simulated for {email} (Demo Mode). Default password is 'Password123!'."
+        try:
+            payload = {
+                "requestType": "PASSWORD_RESET",
+                "email": email
+            }
+            params = {"key": self.api_key}
+            response = requests.post(FIREBASE_AUTH_RESET_URL, params=params, json=payload, timeout=10)
+            if response.status_code == 200:
+                return True, f"Password reset instructions have been sent to {email}."
+            else:
+                data = response.json()
+                error_msg = data.get("error", {}).get("message", "Could not send reset email.")
+                return False, self._translate_error(error_msg)
+        except Exception as e:
+            return False, f"Error requesting password reset: {e}"
 
     def _translate_error(self, error_code: str) -> str:
         """Translates Firebase error codes into human-readable messages."""
@@ -250,7 +173,9 @@ class FirebaseAuthService:
             "EMAIL_EXISTS": "An account with this email address already exists. Please Sign In instead.",
             "OPERATION_NOT_ALLOWED": "Password sign-in is disabled in your Firebase console.",
             "TOO_MANY_ATTEMPTS_TRY_LATER": "Too many failed login attempts. Please try again later.",
-            "WEAK_PASSWORD : Password should be at least 6 characters": "Password must be at least 6 characters long."
+            "WEAK_PASSWORD : Password should be at least 6 characters": "Password must be at least 6 characters long.",
+            "API_KEY_INVALID": "Firebase Web API Key is invalid or expired. Please update FIREBASE_WEB_API_KEY in your Streamlit Secrets.",
+            "API key not valid. Please pass a valid API key.": "Firebase Web API Key is invalid or expired. Please update FIREBASE_WEB_API_KEY in your Streamlit Secrets."
         }
         return translations.get(error_code, f"Authentication error: {error_code}")
 

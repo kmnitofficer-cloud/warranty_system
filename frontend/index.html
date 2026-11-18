@@ -67,16 +67,11 @@
         </button>
       </form>
 
-      <!-- Quick Demo Credentials Box -->
-      <div class="demo-credentials-box">
-        <div class="demo-title">⚡ Quick Evaluation Sign-in</div>
-        <div class="demo-btns">
-          <button type="button" class="btn-demo" onclick="fillDemo('admin@equipguard.io', 'Password123!')">
-            Admin User
-          </button>
-          <button type="button" class="btn-demo" onclick="fillDemo('manager@equipguard.io', 'Password123!')">
-            IT Manager
-          </button>
+      <!-- Cloud Connected Notice -->
+      <div class="demo-credentials-box" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-top: 20px;">
+        <div style="font-size: 12px; color: var(--text-muted); text-align: center;">
+          🔒 Secured with <strong>Firebase Authentication</strong><br>
+          <span style="font-size: 11px;">Sign in with your registered account or click <strong>Create Account</strong> above.</span>
         </div>
       </div>
     </div>
@@ -889,43 +884,26 @@
 
   <!-- Firebase 13.4.0 SDK Integration -->
   <script type="module">
-    // Import the functions you need from the SDKs you need
     import { initializeApp } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-app.js";
-    import { getAnalytics } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-analytics.js";
     import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js";
 
-    // Your web app's Firebase configuration
-    // For Firebase JS SDK v7.20.0 and later, measurementId is optional
-    const firebaseConfig = {
-      apiKey: "AIzaSyC8s9oRsWxzExlhjvIZqVoYZBsjJyG47ts",
-      authDomain: "kmn-it-warranty.firebaseapp.com",
-      projectId: "kmn-it-warranty",
-      storageBucket: "kmn-it-warranty.firebasestorage.app",
-      messagingSenderId: "270307773370",
-      appId: "1:270307773370:web:dd7d54f4187e3b2b8cab83",
-      measurementId: "G-RNJ3CP4ECJ"
-    };
-
-    // Initialize Firebase
-    try {
-      const app = initializeApp(firebaseConfig);
-      let analytics = null;
+    window.initFirebaseSDK = function(cfg) {
+      if (!cfg || !cfg.apiKey) return null;
       try {
-        analytics = getAnalytics(app);
-      } catch (e) {
-        console.warn("Analytics not supported in current environment:", e);
+        const app = initializeApp(cfg);
+        const auth = getAuth(app);
+        window.firebaseApp = app;
+        window.firebaseAuth = auth;
+        window.firebaseSignIn = signInWithEmailAndPassword;
+        window.firebaseSignUp = createUserWithEmailAndPassword;
+        window.firebaseSignOut = signOut;
+        console.log("Firebase App initialized dynamically for project:", cfg.projectId);
+        return auth;
+      } catch (err) {
+        console.warn("Firebase initialization warning:", err.message);
+        return null;
       }
-      const auth = getAuth(app);
-      window.firebaseApp = app;
-      window.firebaseAuth = auth;
-      window.firebaseConfig = firebaseConfig;
-      window.firebaseSignIn = signInWithEmailAndPassword;
-      window.firebaseSignUp = createUserWithEmailAndPassword;
-      window.firebaseSignOut = signOut;
-      console.log("Firebase App initialized with project kmn-it-warranty");
-    } catch (err) {
-      console.error("Firebase initialization error:", err);
-    }
+    };
   </script>
 
   <!-- Main JavaScript App Logic -->

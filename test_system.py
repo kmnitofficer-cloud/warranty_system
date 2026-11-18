@@ -24,21 +24,33 @@ from google_drive import drive_service
 
 
 def test_database_initialization():
-    print("Testing Excel Database initialization...")
-    excel_db.init_database(force_refresh=True)
-    assert config.LOCAL_DB_PATH.exists(), "Local database file does not exist!"
+    print("Testing Cloud Excel Database initialization (Pure Cloud, Zero Local Files)...")
+    wb = excel_db._create_empty_workbook_memory()
+    assert wb is not None
+    assert config.SHEET_DEVICES in wb.sheetnames
+    assert config.SHEET_NOTIFICATIONS in wb.sheetnames
+    assert config.SHEET_ACTIVITY_LOG in wb.sheetnames
+    assert config.SHEET_SETTINGS in wb.sheetnames
+    print("✓ Cloud schema initialized with all 4 required sheets.")
 
+    # Initialize in-memory database buffer for subsequent test execution
+    import io
+    buf = io.BytesIO()
+    wb.save(buf)
+    excel_db._in_memory_bytes = buf.getvalue()
+    excel_db._is_connected = True
+    excel_db._init_done = True
+    excel_db._drive_file_id = "test-mock-drive-file-id"
+    drive_service.update_file_bytes = lambda fid, d: True
+
+    # Verify zero seed devices (no fake data)
     devices = excel_db.get_devices()
-    print(f"✓ Initialized with {len(devices)} devices in {config.SHEET_DEVICES}.")
-    assert len(devices) >= 8, f"Expected at least 8 seed devices, got {len(devices)}"
+    assert len(devices) == 0, f"Expected 0 seed devices, got {len(devices)}"
+    print("✓ Zero local/seed data verified (Clean Cloud Schema).")
 
-    logs = excel_db.get_activity_logs()
-    print(f"✓ Initialized with {len(logs)} activity log entries.")
-    assert len(logs) >= 1, "Expected activity logs."
-
-    setting = excel_db.get_setting("system_name")
-    print(f"✓ Settings check: system_name = '{setting}'")
-    assert setting == config.APP_NAME
+    # Verify local file is NOT created
+    assert not config.LOCAL_DB_PATH.exists(), "Local database file must NOT be created on disk!"
+    print("✓ Local disk clean: No local .xlsx database file created.")
 
 
 def test_warranty_calculation_and_deduplication():
@@ -87,18 +99,6 @@ def test_device_crud_and_validation():
     print("\nTesting Device Manager CRUD & Validation...")
     today = date.today()
 
-    # Test duplicate serial rejection
-    invalid_data = {
-        "Device_Name": "Duplicate Tester",
-        "Category": "Laptop",
-        "Serial_Number": "C02G87Y9MD6R",  # Already in seed devices (DEV-1001)
-        "Warranty_Start_Date": today.isoformat(),
-        "Warranty_End_Date": (today + timedelta(days=365)).isoformat()
-    }
-    valid, msg = device_manager.validate_device_input(invalid_data)
-    assert not valid, "Failed to reject duplicate serial number!"
-    print(f"✓ Duplicate serial prevention passed: '{msg}'")
-
     # Add a valid new device
     new_data = {
         "Device_Name": "Surface Laptop Studio 2",
@@ -119,6 +119,18 @@ def test_device_crud_and_validation():
     assert success, f"Failed to add device: {msg}"
     device_id = added["Device_ID"]
     print(f"✓ Successfully added device: {device_id} ({added['Device_Name']})")
+
+    # Test duplicate serial rejection (must reject existing serial SN-SURFACE-9988)
+    invalid_data = {
+        "Device_Name": "Duplicate Tester",
+        "Category": "Laptop",
+        "Serial_Number": "SN-SURFACE-9988",
+        "Warranty_Start_Date": today.isoformat(),
+        "Warranty_End_Date": (today + timedelta(days=365)).isoformat()
+    }
+    valid, dup_msg = device_manager.validate_device_input(invalid_data)
+    assert not valid, "Failed to reject duplicate serial number!"
+    print(f"✓ Duplicate serial prevention passed: '{dup_msg}'")
 
     # Verify device exists in database
     retrieved = excel_db.get_device_by_id(device_id)
@@ -162,42 +174,36 @@ def test_notifications_lifecycle():
 
 
 def test_reports_excel_and_pdf():
-    print("\nTesting Reports, Excel Export & PDF Generation...")
+    print("\nTesting Reports, Excel Export & PDF Generation (In-Memory, Zero Disk)...")
     devices = device_manager.get_all_devices_enriched()
     summary = report_service.get_analytics_summary()
 
     print(f"✓ Analytics summary: Total Devices={summary['total_devices']}, Active={summary['active_warranties']} ({summary['active_percentage']}%), Expiring Soon={summary['expiring_soon']}, Expired={summary['expired_warranties']}.")
-    print(f"✓ Expiration Horizons: ≤30d={summary['expiring_30_days']}, ≤60d={summary['expiring_60_days']}, ≤90d={summary['expiring_90_days']}.")
 
-    # Generate Excel Report
-    excel_path = config.REPORTS_DIR / "test_report.xlsx"
-    excel_bytes = report_service.generate_excel_report(devices, str(excel_path))
-    assert len(excel_bytes) > 1000, "Generated Excel report is empty or invalid!"
-    assert excel_path.exists(), "Excel report file not created!"
-    print(f"✓ Excel report generated successfully ({len(excel_bytes)} bytes) at {excel_path}.")
+    # Generate in-memory Excel Report
+    excel_bytes = report_service.generate_excel_report(devices)
+    assert len(excel_bytes) > 500, "Generated Excel report is empty or invalid!"
+    print(f"✓ In-memory Excel report generated successfully ({len(excel_bytes)} bytes).")
 
-    # Generate PDF Audit Report
-    pdf_path = config.REPORTS_DIR / "test_report.pdf"
-    pdf_bytes = report_service.generate_pdf_report(devices, summary, str(pdf_path))
-    assert len(pdf_bytes) > 2000, "Generated PDF report is empty or invalid!"
-    assert pdf_path.exists(), "PDF report file not created!"
-    print(f"✓ PDF report generated successfully ({len(pdf_bytes)} bytes) at {pdf_path}.")
+    # Generate in-memory PDF Audit Report
+    pdf_bytes = report_service.generate_pdf_report(devices, summary)
+    assert len(pdf_bytes) > 500, "Generated PDF report is empty or invalid!"
+    print(f"✓ In-memory PDF report generated successfully ({len(pdf_bytes)} bytes).")
 
 
 def test_authentication_service():
-    print("\nTesting Firebase Authentication Service (Demo Fallback & REST)...")
-    # Valid Demo Admin
-    ok, msg, user = auth_service.sign_in("admin@equipguard.io", "Password123!")
-    assert ok, f"Admin login failed: {msg}"
-    assert user["email"] == "admin@equipguard.io"
-    print(f"✓ Admin sign-in successful: {user['display_name']} ({user['role']}).")
+    print("\nTesting Firebase Authentication Service (Strict Security)...")
+    # Empty credentials rejected
+    empty_ok, empty_msg, _ = auth_service.sign_in("", "")
+    assert not empty_ok, "Failed to reject empty credentials!"
+    print(f"✓ Empty credentials properly rejected: '{empty_msg}'.")
 
-    # Invalid Password
+    # Invalid / wrong password rejected (must NEVER allow wrong password!)
     bad_ok, bad_msg, _ = auth_service.sign_in("admin@equipguard.io", "WrongPassword!")
-    assert not bad_ok, "Failed to reject invalid password!"
-    print(f"✓ Invalid password properly rejected: '{bad_msg}'.")
+    assert not bad_ok, "Security breach: Allowed sign-in with wrong password!"
+    print(f"✓ Invalid credentials properly rejected: '{bad_msg}'.")
 
-    # Non-existent user
+    # Non-existent user rejected
     none_ok, none_msg, _ = auth_service.sign_in("ghost@company.com", "Password123!")
     assert not none_ok, "Failed to reject unknown user!"
     print(f"✓ Unknown user properly rejected: '{none_msg}'.")

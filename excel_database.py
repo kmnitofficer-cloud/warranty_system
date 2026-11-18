@@ -1,11 +1,11 @@
 """
 Excel Database Engine for Device Warranty Management System.
-Manages the 4 workbook sheets (Devices, Notifications, Activity_Log, Settings)
-using openpyxl, with thread-safe operations, styled headers, and automated
-Google Drive synchronization.
+Cloud-First Architecture: Loads directly from Google Drive into memory and writes back
+to Google Drive via Google Drive API v3. Strictly NO local data files and NO dummy seed data.
 """
 
 import os
+import io
 import logging
 import threading
 from pathlib import Path
@@ -36,47 +36,83 @@ THIN_BORDER = Border(
 
 
 class ExcelDatabase:
-    def __init__(self, local_path: Optional[Path] = None):
-        self.local_path = local_path or config.LOCAL_DB_PATH
+    def __init__(self):
         self.excel_filename = config.EXCEL_FILENAME
-        self._init_done = False
+        self._in_memory_bytes: Optional[bytes] = None
+        self._drive_file_id: Optional[str] = None
+        self._is_connected: bool = False
+        self._init_done: bool = False
+
+    def is_connected(self) -> bool:
+        """Returns True if the database is actively connected to Google Drive."""
+        return self._is_connected and self._in_memory_bytes is not None
 
     def init_database(self, force_refresh: bool = False):
         """
-        Initializes the Excel database.
-        1. Attempts to download from Google Drive if configured.
-        2. If not found or drive offline, checks local cache.
-        3. If local file missing, creates new workbook with all 4 sheets and seed data.
+        Initializes the cloud-only database from Google Drive.
+        Strictly NO local files and NO dummy seed devices are created.
+        If Google Drive is connected:
+            Loads workbook from Drive into memory, or creates a clean empty workbook in Drive if not found.
+        If Google Drive is disconnected:
+            Database remains disconnected and empty until credentials are provided.
         """
         with db_lock:
             if self._init_done and not force_refresh:
                 return
 
-            drive_synced = False
-            if drive_service.is_configured():
-                file_id = drive_service.find_file(self.excel_filename)
-                if file_id:
-                    logger.info(f"Found existing database in Google Drive (ID: {file_id}). Downloading...")
-                    drive_synced = drive_service.download_file(file_id, self.local_path)
+            if not drive_service.is_configured():
+                logger.warning("Google Drive is not configured. Cloud database is offline (no local data fallback).")
+                self._is_connected = False
+                self._in_memory_bytes = None
+                self._init_done = True
+                return
 
-            if not self.local_path.exists() or self.local_path.stat().st_size == 0:
-                logger.info("Local database file not found. Creating fresh workbook with schema and starter data...")
-                self._create_empty_workbook_with_seeds()
-                if drive_service.is_configured():
-                    drive_service.sync_file(self.local_path, self.excel_filename)
+            # Test connection
+            conn_ok, msg, _ = drive_service.test_connection()
+            if not conn_ok:
+                logger.warning(f"Google Drive connection test failed: {msg}")
+                self._is_connected = False
+                self._in_memory_bytes = None
+                self._init_done = True
+                return
+
+            # Search for existing file in Google Drive
+            file_id = drive_service.find_file(self.excel_filename)
+            if file_id:
+                logger.info(f"Loading database from Google Drive (ID: {file_id})...")
+                bytes_data = drive_service.download_file_bytes(file_id)
+                if bytes_data:
+                    self._in_memory_bytes = bytes_data
+                    self._drive_file_id = file_id
+                    self._verify_and_repair_sheets_memory()
+                    self._is_connected = True
+                    self._init_done = True
+                    return
+
+            # If not found in Google Drive, create clean empty workbook (NO seed devices) and upload to Drive
+            logger.info("Database file not found in Google Drive. Creating empty schema in Google Drive...")
+            wb = self._create_empty_workbook_memory()
+            buf = io.BytesIO()
+            wb.save(buf)
+            self._in_memory_bytes = buf.getvalue()
+
+            new_file_id = drive_service.upload_file_bytes(self._in_memory_bytes, self.excel_filename)
+            if new_file_id:
+                self._drive_file_id = new_file_id
+                self._is_connected = True
+                logger.info(f"Initialized new cloud database in Google Drive with ID: {new_file_id}")
             else:
-                # Ensure all 4 sheets exist in existing workbook
-                self._verify_and_repair_sheets()
+                self._is_connected = False
+                logger.error("Failed to upload initial empty database to Google Drive.")
 
             self._init_done = True
 
-    def _create_empty_workbook_with_seeds(self):
-        """Creates the initial workbook with styled sheets and sample seed records."""
+    def _create_empty_workbook_memory(self) -> openpyxl.Workbook:
+        """Creates an empty workbook with styled sheets and default system settings, but ZERO seed devices."""
         wb = openpyxl.Workbook()
-        # Remove default sheet
         wb.remove(wb.active)
 
-        # 1. Devices Sheet
+        # 1. Devices Sheet (Empty - no fake devices!)
         ws_devices = wb.create_sheet(title=config.SHEET_DEVICES)
         self._setup_sheet_headers(ws_devices, config.DEVICE_COLUMNS)
 
@@ -92,7 +128,7 @@ class ExcelDatabase:
         ws_settings = wb.create_sheet(title=config.SHEET_SETTINGS)
         self._setup_sheet_headers(ws_settings, config.SETTINGS_COLUMNS)
 
-        # Populate Default Settings
+        # Populate Default System Configuration Settings
         default_settings = [
             ("system_name", config.APP_NAME, "Display title for the warranty system", datetime.now().isoformat()),
             ("notification_lead_days", "30,14,7,3,0", "Milestone alert days before expiration", datetime.now().isoformat()),
@@ -104,87 +140,22 @@ class ExcelDatabase:
         for row in default_settings:
             ws_settings.append(row)
 
-        # Populate Seed Devices for instant evaluation
-        today = date.today()
-        seed_devices = [
-            (
-                "DEV-1001", "MacBook Pro 16 M3 Max", "Laptop", "Apple", "A2991", "C02G87Y9MD6R",
-                "Alex Mercer", "Executive", (today - timedelta(days=330)).isoformat(), 3499.00, "Apple Business Direct",
-                (today - timedelta(days=330)).isoformat(), (today + timedelta(days=35)).isoformat(), 12,
-                "INV-2025-0891", "Executive workstation. High priority.", "https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=300",
-                datetime.now().isoformat(), datetime.now().isoformat()
-            ),
-            (
-                "DEV-1002", "Dell Precision 5820 Tower", "Desktop", "Dell", "T5820", "8X9Q2Z3",
-                "David Kim", "Operations", (today - timedelta(days=720)).isoformat(), 2850.00, "Dell Direct",
-                (today - timedelta(days=720)).isoformat(), (today + timedelta(days=10)).isoformat(), 24,
-                "INV-2024-0412", "CAD Engineering station. Warranty renewal pending quote.", "https://images.unsplash.com/photo-1587831990711-23ca6441447b?w=300",
-                datetime.now().isoformat(), datetime.now().isoformat()
-            ),
-            (
-                "DEV-1003", "HP Color LaserJet Pro MFP", "Printer", "HP", "M479fdw", "VNC3K98201",
-                "Floor 3 Shared", "Finance", (today - timedelta(days=360)).isoformat(), 699.00, "CDW Corporation",
-                (today - timedelta(days=360)).isoformat(), (today + timedelta(days=2)).isoformat(), 12,
-                "INV-2025-0104", "Main finance floor printer. High utilization.", "https://images.unsplash.com/photo-1612815154858-60aa4c59eaa6?w=300",
-                datetime.now().isoformat(), datetime.now().isoformat()
-            ),
-            (
-                "DEV-1004", "Dell UltraSharp 34 Curved", "Monitor", "Dell", "U3423WE", "CN0M39YF7444",
-                "Sarah Connor", "IT", (today - timedelta(days=400)).isoformat(), 899.00, "Amazon Business",
-                (today - timedelta(days=400)).isoformat(), (today - timedelta(days=15)).isoformat(), 12,
-                "INV-2025-0012", "Dual USB-C monitor. Warranty expired.", "https://images.unsplash.com/photo-1527443224154-c4a3942d3acf?w=300",
-                datetime.now().isoformat(), datetime.now().isoformat()
-            ),
-            (
-                "DEV-1005", "Cisco Catalyst 9200L Switch", "Router", "Cisco", "C9200L-48P-4G", "FOC2438S0R2",
-                "MDF Server Room", "IT", (today - timedelta(days=200)).isoformat(), 3200.00, "Cisco Partner Direct",
-                (today - timedelta(days=200)).isoformat(), (today + timedelta(days=165)).isoformat(), 12,
-                "INV-2025-1198", "Core access layer switch in main server room.", "https://images.unsplash.com/photo-1544197150-b99a580bb7a8?w=300",
-                datetime.now().isoformat(), datetime.now().isoformat()
-            ),
-            (
-                "DEV-1006", "Hikvision 4K Dome Camera", "CCTV", "Hikvision", "DS-2CD2185G0", "HK202309117",
-                "Main Entrance Gate", "Operations", (today - timedelta(days=180)).isoformat(), 280.00, "SecureTech Systems",
-                (today - timedelta(days=180)).isoformat(), (today + timedelta(days=185)).isoformat(), 12,
-                "INV-2025-0551", "Exterior perimeter surveillance camera.", "https://images.unsplash.com/photo-1557597774-9d273605dfa9?w=300",
-                datetime.now().isoformat(), datetime.now().isoformat()
-            ),
-            (
-                "DEV-1007", "APC Smart-UPS RT 3000VA", "UPS", "APC by Schneider", "SURTD3000XLI", "AS214532098",
-                "Server Room Rack A", "IT", (today - timedelta(days=364)).isoformat(), 1950.00, "PowerSolutions Inc",
-                (today - timedelta(days=364)).isoformat(), (today + timedelta(days=1)).isoformat(), 12,
-                "INV-2025-0099", "Critical battery backup for main host servers. Urgent renewal required.", "https://images.unsplash.com/photo-1581092160607-ee22621dd758?w=300",
-                datetime.now().isoformat(), datetime.now().isoformat()
-            ),
-            (
-                "DEV-1008", "Lenovo ThinkPad X1 Carbon Gen 11", "Laptop", "Lenovo", "21HM000KUS", "PF4H9K12",
-                "Michael Scott", "Sales & Marketing", (today - timedelta(days=90)).isoformat(), 1899.00, "Lenovo Pro Store",
-                (today - timedelta(days=90)).isoformat(), (today + timedelta(days=275)).isoformat(), 12,
-                "INV-2025-1540", "Sales executive ultralight laptop.", "https://images.unsplash.com/photo-1541807084-5c52b6b3adef?w=300",
-                datetime.now().isoformat(), datetime.now().isoformat()
-            )
-        ]
-
-        for device in seed_devices:
-            ws_devices.append(device)
-
-        # Initial Activity Log
-        initial_activity = [
-            ("ACT-1001", (today - timedelta(days=2)).isoformat(), "admin@equipguard.io", "System Initialized", "SYSTEM", "Initial database seeded with 8 devices across 7 categories."),
-            ("ACT-1002", (today - timedelta(days=1)).isoformat(), "manager@equipguard.io", "Device Added", "DEV-1008", "Added Lenovo ThinkPad X1 Carbon for Sales team."),
-            ("ACT-1003", today.isoformat(), "system", "Warranty Check", "SYSTEM", "Automated warranty schedule evaluation initiated.")
-        ]
-        for act in initial_activity:
-            ws_activity.append(act)
+        # Log system initialization in Activity Log
+        ws_activity.append([
+            f"ACT-{datetime.now().strftime('%Y%m%d%H%M%S')}",
+            datetime.now().isoformat(),
+            "system",
+            "Cloud Database Initialized",
+            "SYSTEM",
+            "Google Drive cloud database schema created successfully."
+        ])
 
         self._auto_fit_columns(ws_devices)
         self._auto_fit_columns(ws_notifs)
         self._auto_fit_columns(ws_activity)
         self._auto_fit_columns(ws_settings)
 
-        self.local_path.parent.mkdir(parents=True, exist_ok=True)
-        wb.save(str(self.local_path))
-        logger.info(f"Database created successfully at {self.local_path}")
+        return wb
 
     def _setup_sheet_headers(self, ws, headers: List[str]):
         """Applies headers and professional styling to a worksheet."""
@@ -208,10 +179,12 @@ class ExcelDatabase:
                     max_len = len(val_str)
             ws.column_dimensions[col_letter].width = max(max_len + 4, 12)
 
-    def _verify_and_repair_sheets(self):
-        """Ensures all 4 required sheets exist in the workbook."""
+    def _verify_and_repair_sheets_memory(self):
+        """Ensures all 4 required sheets exist in the in-memory workbook."""
+        if not self._in_memory_bytes:
+            return
         try:
-            wb = openpyxl.load_workbook(str(self.local_path))
+            wb = openpyxl.load_workbook(io.BytesIO(self._in_memory_bytes))
             changed = False
             sheets_map = {
                 config.SHEET_DEVICES: config.DEVICE_COLUMNS,
@@ -225,22 +198,60 @@ class ExcelDatabase:
                     self._setup_sheet_headers(ws, cols)
                     changed = True
             if changed:
-                wb.save(str(self.local_path))
+                self._save_workbook(wb)
         except Exception as e:
-            logger.error(f"Error checking sheets: {e}")
+            logger.error(f"Error checking sheets in memory: {e}")
+
+    def _load_workbook(self, data_only: bool = False) -> Optional[openpyxl.Workbook]:
+        """Loads the active workbook from in-memory byte buffer."""
+        if not self._in_memory_bytes:
+            self.init_database()
+        if not self._in_memory_bytes:
+            return None
+        try:
+            return openpyxl.load_workbook(io.BytesIO(self._in_memory_bytes), data_only=data_only)
+        except Exception as e:
+            logger.error(f"Failed to load workbook from memory: {e}")
+            return None
+
+    def _save_workbook(self, wb: openpyxl.Workbook) -> bool:
+        """Serializes workbook to memory and syncs directly to Google Drive."""
+        try:
+            buf = io.BytesIO()
+            wb.save(buf)
+            self._in_memory_bytes = buf.getvalue()
+
+            if self._drive_file_id:
+                return drive_service.update_file_bytes(self._drive_file_id, self._in_memory_bytes)
+            elif drive_service.is_configured():
+                file_id = drive_service.find_file(self.excel_filename)
+                if file_id:
+                    self._drive_file_id = file_id
+                    return drive_service.update_file_bytes(file_id, self._in_memory_bytes)
+                else:
+                    new_id = drive_service.upload_file_bytes(self._in_memory_bytes, self.excel_filename)
+                    self._drive_file_id = new_id
+                    return bool(new_id)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to save workbook to Google Drive: {e}")
+            return False
 
     # =========================================================================
     # Device CRUD Operations
     # =========================================================================
 
     def get_devices(self) -> List[Dict[str, Any]]:
-        """Reads all device records from the Devices sheet."""
+        """Reads all device records from the Devices sheet in Google Drive."""
         self.init_database()
+        if not self.is_connected():
+            return []
+
         with db_lock:
             devices = []
             try:
-                wb = openpyxl.load_workbook(str(self.local_path), data_only=True)
-                if config.SHEET_DEVICES not in wb.sheetnames:
+                wb = self._load_workbook(data_only=True)
+                if not wb or config.SHEET_DEVICES not in wb.sheetnames:
                     return []
                 ws = wb[config.SHEET_DEVICES]
                 rows = list(ws.iter_rows(values_only=True))
@@ -259,7 +270,7 @@ class ExcelDatabase:
                         item[h] = val
                     devices.append(item)
             except Exception as e:
-                logger.error(f"Error reading devices: {e}")
+                logger.error(f"Error reading devices from cloud: {e}")
             return devices
 
     def get_device_by_id(self, device_id: str) -> Optional[Dict[str, Any]]:
@@ -282,14 +293,19 @@ class ExcelDatabase:
     def save_device(self, device_data: Dict[str, Any], is_edit: bool = False) -> Tuple[bool, str]:
         """
         Inserts or updates a device record in the Devices sheet.
-        Persists locally and triggers Google Drive sync.
+        Persists directly to Google Drive.
         """
         self.init_database()
+        if not self.is_connected():
+            return False, "Google Drive is disconnected. Connect Google Drive service account to save devices."
+
         with db_lock:
             try:
-                wb = openpyxl.load_workbook(str(self.local_path))
-                ws = wb[config.SHEET_DEVICES]
+                wb = self._load_workbook(data_only=False)
+                if not wb:
+                    return False, "Could not open Google Drive database workbook."
 
+                ws = wb[config.SHEET_DEVICES]
                 headers = [cell.value for cell in ws[1]]
                 device_id = device_data.get("Device_ID")
 
@@ -300,7 +316,6 @@ class ExcelDatabase:
                             row_idx_to_update = row_idx
                             break
 
-                # Prepare row values according to header ordering
                 row_values = []
                 for h in headers:
                     val = device_data.get(h)
@@ -311,16 +326,15 @@ class ExcelDatabase:
                 if row_idx_to_update:
                     for col_idx, val in enumerate(row_values, start=1):
                         ws.cell(row=row_idx_to_update, column=col_idx, value=val)
-                    msg = f"Device {device_id} updated successfully."
+                    msg = f"Device {device_id} updated successfully in Google Drive."
                 else:
                     ws.append(row_values)
-                    msg = f"Device {device_id} added successfully."
+                    msg = f"Device {device_id} added successfully to Google Drive."
 
                 self._auto_fit_columns(ws)
-                wb.save(str(self.local_path))
-
-                # Background sync to Google Drive
-                self._trigger_drive_sync()
+                saved = self._save_workbook(wb)
+                if not saved:
+                    return False, "Failed to upload updated database to Google Drive."
                 return True, msg
 
             except Exception as e:
@@ -328,13 +342,18 @@ class ExcelDatabase:
                 return False, f"Failed to save device: {str(e)}"
 
     def delete_device(self, device_id: str) -> Tuple[bool, str]:
-        """Deletes a device record by Device_ID."""
+        """Deletes a device record by Device_ID directly from Google Drive."""
         self.init_database()
+        if not self.is_connected():
+            return False, "Google Drive is disconnected."
+
         with db_lock:
             try:
-                wb = openpyxl.load_workbook(str(self.local_path))
-                ws = wb[config.SHEET_DEVICES]
+                wb = self._load_workbook(data_only=False)
+                if not wb:
+                    return False, "Could not open Google Drive database."
 
+                ws = wb[config.SHEET_DEVICES]
                 target_row = None
                 for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
                     if row and row[0] and str(row[0]).strip().upper() == str(device_id).strip().upper():
@@ -345,10 +364,10 @@ class ExcelDatabase:
                     return False, f"Device with ID {device_id} not found."
 
                 ws.delete_rows(target_row, 1)
-                wb.save(str(self.local_path))
-
-                self._trigger_drive_sync()
-                return True, f"Device {device_id} deleted successfully."
+                saved = self._save_workbook(wb)
+                if not saved:
+                    return False, "Failed to sync deletion to Google Drive."
+                return True, f"Device {device_id} deleted successfully from Google Drive."
             except Exception as e:
                 logger.error(f"Error deleting device: {e}")
                 return False, f"Failed to delete device: {str(e)}"
@@ -360,11 +379,14 @@ class ExcelDatabase:
     def get_notifications(self) -> List[Dict[str, Any]]:
         """Reads all notification records from the Notifications sheet."""
         self.init_database()
+        if not self.is_connected():
+            return []
+
         with db_lock:
             notifs = []
             try:
-                wb = openpyxl.load_workbook(str(self.local_path), data_only=True)
-                if config.SHEET_NOTIFICATIONS not in wb.sheetnames:
+                wb = self._load_workbook(data_only=True)
+                if not wb or config.SHEET_NOTIFICATIONS not in wb.sheetnames:
                     return []
                 ws = wb[config.SHEET_NOTIFICATIONS]
                 rows = list(ws.iter_rows(values_only=True))
@@ -387,15 +409,20 @@ class ExcelDatabase:
             return notifs
 
     def save_notifications_batch(self, new_notifications: List[Dict[str, Any]]) -> int:
-        """Appends a batch of new notifications to the Notifications sheet."""
+        """Appends a batch of new notifications to Google Drive."""
         if not new_notifications:
             return 0
 
         self.init_database()
+        if not self.is_connected():
+            return 0
+
         with db_lock:
             count = 0
             try:
-                wb = openpyxl.load_workbook(str(self.local_path))
+                wb = self._load_workbook(data_only=False)
+                if not wb:
+                    return 0
                 ws = wb[config.SHEET_NOTIFICATIONS]
                 headers = [cell.value for cell in ws[1]]
 
@@ -409,18 +436,22 @@ class ExcelDatabase:
                     ws.append(row_vals)
                     count += 1
 
-                wb.save(str(self.local_path))
-                self._trigger_drive_sync()
+                self._save_workbook(wb)
             except Exception as e:
                 logger.error(f"Error saving batch notifications: {e}")
             return count
 
     def mark_notification_read(self, notification_id: str) -> bool:
-        """Marks a notification as 'read'."""
+        """Marks a notification as 'read' in Google Drive."""
         self.init_database()
+        if not self.is_connected():
+            return False
+
         with db_lock:
             try:
-                wb = openpyxl.load_workbook(str(self.local_path))
+                wb = self._load_workbook(data_only=False)
+                if not wb:
+                    return False
                 ws = wb[config.SHEET_NOTIFICATIONS]
                 headers = [cell.value for cell in ws[1]]
                 status_col_idx = headers.index("Status") + 1 if "Status" in headers else None
@@ -431,8 +462,7 @@ class ExcelDatabase:
                 for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
                     if row and row[0] and str(row[0]).strip() == str(notification_id).strip():
                         ws.cell(row=row_idx, column=status_col_idx, value="read")
-                        wb.save(str(self.local_path))
-                        self._trigger_drive_sync()
+                        self._save_workbook(wb)
                         return True
                 return False
             except Exception as e:
@@ -442,10 +472,15 @@ class ExcelDatabase:
     def mark_all_notifications_read(self) -> int:
         """Marks all unread notifications as 'read'."""
         self.init_database()
+        if not self.is_connected():
+            return 0
+
         with db_lock:
             updated_count = 0
             try:
-                wb = openpyxl.load_workbook(str(self.local_path))
+                wb = self._load_workbook(data_only=False)
+                if not wb:
+                    return 0
                 ws = wb[config.SHEET_NOTIFICATIONS]
                 headers = [cell.value for cell in ws[1]]
                 status_col_idx = headers.index("Status") + 1 if "Status" in headers else None
@@ -460,8 +495,7 @@ class ExcelDatabase:
                         updated_count += 1
 
                 if updated_count > 0:
-                    wb.save(str(self.local_path))
-                    self._trigger_drive_sync()
+                    self._save_workbook(wb)
             except Exception as e:
                 logger.error(f"Error marking all notifications read: {e}")
             return updated_count
@@ -473,9 +507,14 @@ class ExcelDatabase:
     def log_activity(self, user_email: str, action: str, device_id: str, details: str):
         """Appends a new audit record to the Activity_Log sheet."""
         self.init_database()
+        if not self.is_connected():
+            return
+
         with db_lock:
             try:
-                wb = openpyxl.load_workbook(str(self.local_path))
+                wb = self._load_workbook(data_only=False)
+                if not wb:
+                    return
                 ws = wb[config.SHEET_ACTIVITY_LOG]
                 log_id = f"ACT-{datetime.now().strftime('%Y%m%d%H%M%S')}"
                 ws.append([
@@ -486,19 +525,21 @@ class ExcelDatabase:
                     device_id or "N/A",
                     details
                 ])
-                wb.save(str(self.local_path))
-                self._trigger_drive_sync()
+                self._save_workbook(wb)
             except Exception as e:
                 logger.error(f"Error logging activity: {e}")
 
     def get_activity_logs(self, limit: int = 50) -> List[Dict[str, Any]]:
         """Reads recent activity log entries sorted newest first."""
         self.init_database()
+        if not self.is_connected():
+            return []
+
         with db_lock:
             logs = []
             try:
-                wb = openpyxl.load_workbook(str(self.local_path), data_only=True)
-                if config.SHEET_ACTIVITY_LOG not in wb.sheetnames:
+                wb = self._load_workbook(data_only=True)
+                if not wb or config.SHEET_ACTIVITY_LOG not in wb.sheetnames:
                     return []
                 ws = wb[config.SHEET_ACTIVITY_LOG]
                 rows = list(ws.iter_rows(values_only=True))
@@ -529,10 +570,13 @@ class ExcelDatabase:
     def get_setting(self, key: str, default: Any = None) -> Any:
         """Retrieves a system configuration setting from the Settings sheet."""
         self.init_database()
+        if not self.is_connected():
+            return default
+
         with db_lock:
             try:
-                wb = openpyxl.load_workbook(str(self.local_path), data_only=True)
-                if config.SHEET_SETTINGS not in wb.sheetnames:
+                wb = self._load_workbook(data_only=True)
+                if not wb or config.SHEET_SETTINGS not in wb.sheetnames:
                     return default
                 ws = wb[config.SHEET_SETTINGS]
                 for row in ws.iter_rows(min_row=2, values_only=True):
@@ -545,9 +589,14 @@ class ExcelDatabase:
     def set_setting(self, key: str, value: Any, description: str = "") -> bool:
         """Sets or updates a configuration key in the Settings sheet."""
         self.init_database()
+        if not self.is_connected():
+            return False
+
         with db_lock:
             try:
-                wb = openpyxl.load_workbook(str(self.local_path))
+                wb = self._load_workbook(data_only=False)
+                if not wb:
+                    return False
                 ws = wb[config.SHEET_SETTINGS]
                 found = False
                 for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
@@ -560,42 +609,31 @@ class ExcelDatabase:
                         break
                 if not found:
                     ws.append([key, str(value), description, datetime.now().isoformat()])
-                wb.save(str(self.local_path))
-                self._trigger_drive_sync()
-                return True
+                return self._save_workbook(wb)
             except Exception as e:
                 logger.error(f"Error setting setting {key}: {e}")
                 return False
 
     def sync_to_drive(self) -> Tuple[bool, str]:
-        """Synchronously pushes local database to Google Drive."""
-        if not drive_service.is_configured():
-            return False, "Google Drive not configured."
-        return drive_service.sync_file(self.local_path, self.excel_filename)
+        """Synchronously pushes in-memory database to Google Drive."""
+        if not drive_service.is_configured() or not self._in_memory_bytes:
+            return False, "Google Drive is not configured."
+        return drive_service.sync_file_bytes(self._in_memory_bytes, self.excel_filename)
 
     def sync_from_drive(self) -> Tuple[bool, str]:
         """Synchronously pulls latest database from Google Drive."""
         if not drive_service.is_configured():
-            return False, "Google Drive not configured."
+            return False, "Google Drive is not configured."
         file_id = drive_service.find_file(self.excel_filename)
         if not file_id:
             return False, "File not found in Google Drive."
-        success = drive_service.download_file(file_id, self.local_path)
-        if success:
-            return True, f"Downloaded latest cloud database (File ID: {file_id})."
+        data = drive_service.download_file_bytes(file_id)
+        if data:
+            self._in_memory_bytes = data
+            self._drive_file_id = file_id
+            self._is_connected = True
+            return True, f"Downloaded latest cloud database from Google Drive (File ID: {file_id[:8]}...)."
         return False, "Failed to download cloud database."
-
-    def _trigger_drive_sync(self):
-        """Helper to sync current workbook to Google Drive in the background."""
-        if drive_service.is_configured():
-            try:
-                threading.Thread(
-                    target=drive_service.sync_file,
-                    args=(self.local_path, self.excel_filename),
-                    daemon=True
-                ).start()
-            except Exception as e:
-                logger.error(f"Failed to start drive sync thread: {e}")
 
 
 # Singleton instance

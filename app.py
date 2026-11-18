@@ -167,11 +167,13 @@ def handle_component_actions(component_event: dict):
 
     # 8. Test Google Drive Connection Action
     elif action == "test_drive_connection":
+        drive_service._service = None
         success, msg, details = drive_service.test_connection()
         if success:
+            excel_db.init_database(force_refresh=True)
             st.session_state["toast_message"] = ("success", f"Google Drive Connected! ({details.get('email')})")
         else:
-            st.session_state["toast_message"] = ("warning", msg)
+            st.session_state["toast_message"] = ("warning", f"Drive Connection Failed: {msg}")
         st.rerun()
 
     # 8b. Save Google Drive Service Account Credentials Action
@@ -185,10 +187,11 @@ def handle_component_actions(component_event: dict):
                     json.dump(parsed, f, indent=2)
                 drive_service.credentials_path = target_file
                 drive_service._service = None
+                drive_service._service_account_email = parsed.get("client_email")
                 success, msg, details = drive_service.test_connection()
                 if success:
+                    excel_db.init_database(force_refresh=True)
                     st.session_state["toast_message"] = ("success", f"Connected to Google Drive! ({details.get('email')})")
-                    drive_service.sync_file(config.LOCAL_DB_PATH, config.EXCEL_FILENAME)
                 else:
                     st.session_state["toast_message"] = ("error", f"Key saved, but Drive API error: {msg}")
             else:
@@ -200,13 +203,13 @@ def handle_component_actions(component_event: dict):
     # 9. Sync Google Drive Action
     elif action == "sync_drive":
         if drive_service.is_configured():
-            success, msg = drive_service.sync_file(config.LOCAL_DB_PATH, config.EXCEL_FILENAME)
+            success, msg = excel_db.sync_to_drive()
             if success:
                 st.session_state["toast_message"] = ("success", msg)
             else:
                 st.session_state["toast_message"] = ("error", msg)
         else:
-            st.session_state["toast_message"] = ("warning", "Google Drive credentials not configured. Using local database.")
+            st.session_state["toast_message"] = ("warning", "Google Drive credentials not configured. Cloud database offline.")
         st.rerun()
 
     # 9b. Share Google Drive File Action
@@ -266,17 +269,18 @@ def main():
     notifications = notification_manager.get_notifications()
     analytics = report_service.get_analytics_summary()
     drive_configured = drive_service.is_configured()
-    cloud_file_id = drive_service._cached_file_id or (drive_service.find_file(config.EXCEL_FILENAME) if drive_configured else None)
+    cloud_file_id = excel_db._drive_file_id or drive_service._cached_file_id
     cloud_sync_info = {
-        "configured": drive_configured,
+        "configured": excel_db.is_connected(),
         "email": drive_service.get_service_account_email() if drive_configured else None,
-        "status": "Google Drive Active" if drive_configured else "Local Storage",
+        "status": "Google Drive Active" if excel_db.is_connected() else "Google Drive Disconnected",
         "file_id": cloud_file_id
     }
 
     component_state = {
         "user": st.session_state.get("user"),
         "auth_error": st.session_state.get("auth_error"),
+        "firebase_config": config.get_firebase_config(),
         "devices": devices,
         "notifications": notifications,
         "analytics": analytics,

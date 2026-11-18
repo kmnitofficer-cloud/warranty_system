@@ -81,36 +81,17 @@ window.parent.postMessage({
 document.addEventListener("DOMContentLoaded", function() {
   initEventListeners();
   notifyFrameHeight();
-
-  // If after 400ms no Streamlit message has arrived, load initial local mode demo
-  setTimeout(() => {
-    if (!state.isStreamlitConnected && !state.user) {
-      loadInitialStandaloneDemo();
-    }
-  }, 400);
+  showLoginView();
 });
 
-function loadInitialStandaloneDemo() {
-  // Check if session was preserved in localStorage
-  const cachedUser = localStorage.getItem("equipguard_user");
-  if (cachedUser) {
-    try {
-      state.user = JSON.parse(cachedUser);
-      showAppView();
-    } catch(e) {
-      showLoginView();
-    }
-  } else {
-    showLoginView();
-  }
-}
-
 function handleBackendSync(args) {
+  // Dynamically initialize client Firebase SDK with configuration from backend
+  if (args.firebase_config && typeof window.initFirebaseSDK === "function" && !window.firebaseAuth) {
+    window.initFirebaseSDK(args.firebase_config);
+  }
+
   if (args.user) {
     state.user = args.user;
-    try {
-      localStorage.setItem("equipguard_user", JSON.stringify(state.user));
-    } catch(e) {}
     hideLoginAlert();
     showAppView();
   } else if (!state.user) {
@@ -401,6 +382,27 @@ function fillDemo(email, password) {
   handleLoginSubmit(new Event("submit"));
 }
 
+function translateFirebaseClientError(err) {
+  const code = err.code || "";
+  const msg = err.message || "";
+  if (code === "auth/invalid-credential" || code === "auth/wrong-password") {
+    return "Incorrect email or password. Please verify your credentials.";
+  }
+  if (code === "auth/user-not-found") {
+    return "No account found with this email address. Please click 'Create Account' above.";
+  }
+  if (code === "auth/email-already-in-use") {
+    return "An account with this email already exists. Please Sign In instead.";
+  }
+  if (code === "auth/weak-password") {
+    return "Password must be at least 6 characters long.";
+  }
+  if (code === "auth/invalid-api-key" || code === "auth/api-key-not-valid") {
+    return "Firebase Web API Key is invalid or expired. Please check your Firebase settings.";
+  }
+  return `Authentication failed: ${msg || code}`;
+}
+
 async function handleLoginSubmit(e) {
   if (e) e.preventDefault();
   const authModeEl = document.getElementById("auth-mode");
@@ -455,68 +457,37 @@ async function handleLoginSubmit(e) {
         };
 
         state.user = userObj;
-        try {
-          localStorage.setItem("equipguard_user", JSON.stringify(userObj));
-        } catch(e) {}
-
         sendToStreamlit("login_success", { user: userObj });
         showToast(`Welcome back, ${finalName}!`, "success");
         showAppView();
         return;
       }
     } catch (fbErr) {
-      console.warn("Client Firebase Auth attempt:", fbErr.code || fbErr.message);
-      if (fbErr.code === "auth/invalid-credential" || fbErr.code === "auth/user-not-found") {
-        // If client knows user not found, give clear prompt
-        const promptMsg = mode === "signin"
-          ? `Invalid email or password. <a href="javascript:void(0)" onclick="setAuthMode('signup')" style="color: var(--primary); font-weight: 600; text-decoration: underline;">Click here to create this account</a>.`
-          : `Registration error: ${fbErr.message}`;
-        showLoginAlert(promptMsg);
-        if (submitBtn) {
-          submitBtn.disabled = false;
-          submitBtn.innerText = mode === "signup" ? "Create Account with Firebase" : "Sign In to Dashboard";
-        }
-        // Still attempt backend for demo fallback accounts
+      console.warn("Client Firebase Auth attempt failed:", fbErr.code || fbErr.message);
+      showLoginAlert(translateFirebaseClientError(fbErr));
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerText = mode === "signup" ? "Create Account with Firebase" : "Sign In to Dashboard";
       }
+      return;
     }
   }
 
-  // 2. Dispatch to Python Streamlit backend
+  // 2. Dispatch to Python Streamlit backend (Firebase REST API verification)
   if (mode === "signup") {
     sendToStreamlit("sign_up", { email, password, display_name: displayName });
   } else {
     sendToStreamlit("login", { email, password });
   }
 
-  // 3. Fallback & Demo safety guard
+  // Safety timer to re-enable button if backend takes time
   setTimeout(() => {
-    if (submitBtn) {
+    if (submitBtn && submitBtn.disabled && !state.user) {
       submitBtn.disabled = false;
       submitBtn.innerText = mode === "signup" ? "Create Account with Firebase" : "Sign In to Dashboard";
     }
-
-    // Instant sign-in guarantee for demo accounts if not yet logged in
-    const isDemo = (email === "admin@equipguard.io" || email === "manager@equipguard.io");
-    if (isDemo && !state.user) {
-      const isManager = email.includes("manager");
-      const demoUser = {
-        uid: isManager ? "demo-user-manager" : "demo-user-admin",
-        email: email,
-        display_name: isManager ? "Sarah Connor" : "Alex Mercer",
-        role: isManager ? "IT Asset Manager" : "System Administrator",
-        department: "IT Operations",
-        avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${email}`,
-        auth_mode: "demo"
-      };
-      state.user = demoUser;
-      try {
-        localStorage.setItem("equipguard_user", JSON.stringify(demoUser));
-      } catch(e) {}
-      sendToStreamlit("login_success", { user: demoUser });
-      showToast("Logged in successfully (Demo Mode)", "success");
-      showAppView();
-    }
-  }, 1200);
+  }, 10000);
+}
 }
 
 function handleLogout() {
@@ -582,17 +553,17 @@ function updateCloudSyncUI() {
   } else {
     if (pill) {
       pill.classList.remove("connected");
-      pill.innerHTML = `<span class="status-indicator-dot"></span><span>Local Storage</span>`;
-      pill.title = "Local Excel cache mode. Connect Google Drive in Settings.";
+      pill.innerHTML = `<span class="status-indicator-dot" style="background: #ef4444;"></span><span style="color: #ef4444;">Drive Disconnected</span>`;
+      pill.title = "Google Drive Disconnected. Connect Google Drive in Settings.";
     }
     if (headerBadge) {
-      headerBadge.innerHTML = `<span class="badge badge-warning" style="background: rgba(245, 158, 11, 0.2); color: #fbbf24; font-size: 12px;">⚠ Local Cache Mode</span>`;
+      headerBadge.innerHTML = `<span class="badge badge-danger" style="background: rgba(239, 68, 68, 0.2); color: #f87171; font-size: 12px;">⚠️ Google Drive Disconnected</span>`;
     }
     if (settingsStatus) {
-      settingsStatus.innerHTML = `<span class="status-indicator-dot" style="background: var(--warning);"></span><span style="color: var(--warning);">Local Storage Mode (Credentials Pending)</span>`;
+      settingsStatus.innerHTML = `<span class="status-indicator-dot" style="background: #ef4444;"></span><span style="color: #ef4444;">Google Drive Disconnected (Cloud Database Offline)</span>`;
     }
     if (settingsEmail) {
-      settingsEmail.innerText = "No Service Account loaded. Follow the 4-step wizard below to connect.";
+      settingsEmail.innerText = "No valid Google Service Account connected. Paste your Service Account JSON below or configure Streamlit Secrets.";
       settingsEmail.style.color = "var(--text-muted)";
     }
     if (copyBtn) {
