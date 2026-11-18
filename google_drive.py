@@ -31,18 +31,8 @@ class GoogleDriveService:
         self._service_account_email = None
 
     def _get_credentials_dict(self) -> Optional[dict]:
-        """Loads service account credentials dictionary from file, st.secrets, env, or TOML."""
-        # 1. Check file path
-        if self.credentials_path and os.path.isfile(self.credentials_path):
-            try:
-                with open(self.credentials_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    if data.get("type") == "service_account" and data.get("client_email"):
-                        return data
-            except Exception as e:
-                logger.warning(f"Failed to read credentials file: {e}")
-
-        # 2. Check Streamlit secrets
+        """Loads service account credentials dictionary prioritizing st.secrets / secrets.toml (Cloud First)."""
+        # 1. Check Streamlit secrets (Streamlit Cloud production)
         try:
             import streamlit as st
             if hasattr(st, "secrets") and st.secrets and "google_drive" in st.secrets:
@@ -52,17 +42,7 @@ class GoogleDriveService:
         except Exception:
             pass
 
-        # 3. Check environment variable
-        env_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
-        if env_json:
-            try:
-                data = json.loads(env_json)
-                if data.get("client_email"):
-                    return data
-            except Exception:
-                pass
-
-        # 4. Check local TOML files
+        # 2. Check local TOML files (.streamlit/secrets.toml)
         candidates = [
             config.BASE_DIR / ".streamlit" / "secrets.toml",
             config.BASE_DIR.parent / ".streamlit" / "secrets.toml",
@@ -79,6 +59,39 @@ class GoogleDriveService:
                         toml_data = tomllib.load(f)
                         if "google_drive" in toml_data and toml_data["google_drive"].get("client_email"):
                             return dict(toml_data["google_drive"])
+                except Exception:
+                    pass
+
+        # 3. Check environment variable
+        env_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
+        if env_json:
+            try:
+                data = json.loads(env_json)
+                if data.get("client_email"):
+                    return data
+            except Exception:
+                pass
+
+        # 4. Check file path (credentials/service_account.json or other json in credentials)
+        if self.credentials_path and os.path.isfile(self.credentials_path):
+            try:
+                with open(self.credentials_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if data.get("type") == "service_account" and data.get("client_email"):
+                        return data
+            except Exception as e:
+                logger.warning(f"Failed to read credentials file: {e}")
+
+        # 5. Check any active service account JSON in credentials directory
+        if config.CREDENTIALS_DIR.exists():
+            for json_file in config.CREDENTIALS_DIR.glob("*.json"):
+                if "example" in json_file.name.lower():
+                    continue
+                try:
+                    with open(json_file, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                        if data.get("type") == "service_account" and data.get("client_email"):
+                            return data
                 except Exception:
                     pass
 

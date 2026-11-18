@@ -30,10 +30,22 @@ const state = {
 // Streamlit Custom Component Protocol Bridge
 // =========================================================================
 
+function sendComponentReady() {
+  window.parent.postMessage({
+    isStreamlitMessage: true,
+    type: "streamlit:componentReady",
+    apiVersion: 1
+  }, "*");
+}
+
 function sendToStreamlit(action, payload = {}) {
+  // Always ping componentReady before sending value to ensure handshake
+  sendComponentReady();
+
   const message = {
     isStreamlitMessage: true,
     type: "streamlit:setComponentValue",
+    dataType: "json",
     value: {
       action: action,
       payload: payload,
@@ -60,6 +72,10 @@ function notifyFrameHeight() {
 window.addEventListener("message", function(event) {
   if (event.data && event.data.type === "streamlit:render") {
     state.isStreamlitConnected = true;
+    if (window._readyPingInterval) {
+      clearInterval(window._readyPingInterval);
+      window._readyPingInterval = null;
+    }
     const { args } = event.data;
     if (args) {
       handleBackendSync(args);
@@ -67,12 +83,23 @@ window.addEventListener("message", function(event) {
   }
 });
 
-// Notify parent component that frontend is ready
-window.parent.postMessage({
-  isStreamlitMessage: true,
-  type: "streamlit:componentReady",
-  apiVersion: 1
-}, "*");
+// Send initial componentReady and keep pinging until Streamlit acknowledges
+sendComponentReady();
+window._readyPingInterval = setInterval(() => {
+  if (state.isStreamlitConnected) {
+    clearInterval(window._readyPingInterval);
+    window._readyPingInterval = null;
+  } else {
+    sendComponentReady();
+  }
+}, 250);
+
+setTimeout(() => {
+  if (window._readyPingInterval) {
+    clearInterval(window._readyPingInterval);
+    window._readyPingInterval = null;
+  }
+}, 20000);
 
 // =========================================================================
 // Initialization & Demo Mock Data (Standalone Fallback)
@@ -301,7 +328,12 @@ function hideLoginAlert() {
 function showLoginAlert(msg) {
   const alertBox = document.getElementById("login-alert");
   if (alertBox) {
-    alertBox.innerHTML = msg;
+    alertBox.innerHTML = `
+      <div style="display: flex; align-items: flex-start; gap: 8px; text-align: left;">
+        <span style="font-size: 16px;">⚠️</span>
+        <div style="flex: 1; font-size: 13px; line-height: 1.4; word-break: break-word;">${msg}</div>
+      </div>
+    `;
     alertBox.style.display = "block";
   }
 }
