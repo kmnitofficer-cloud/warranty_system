@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EquipGuard - Device Warranty Management System</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Chart.js for interactive analytics -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- =========================================================================
+       VIEW 1: AUTHENTICATION / LOGIN VIEW
+       ========================================================================= -->
+  <div id="login-view" class="login-wrapper">
+    <div class="login-card">
+      <div class="login-header">
+        <svg class="login-logo" viewBox="0 0 48 48" fill="none">
+          <rect width="48" height="48" rx="12" fill="#2563EB"/>
+          <path d="M24 10L14 14.5V23C14 29.5 18.25 35.5 24 37C29.75 35.5 34 29.5 34 23V14.5L24 10Z" fill="white" fill-opacity="0.15" stroke="white" stroke-width="2.5" stroke-linejoin="round"/>
+          <path d="M20 23.5L23 26.5L28.5 20.5" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <h1 class="login-title">EquipGuard</h1>
+        <p class="login-subtitle">Enterprise Device Warranty & Asset Management</p>
+      </div>
+
+      <!-- Auth Mode Tabs -->
+      <div class="auth-tabs" style="display: flex; gap: 6px; background: #f1f5f9; padding: 4px; border-radius: 8px; margin-bottom: 20px;">
+        <button type="button" id="tab-auth-signin" class="btn-secondary" style="flex: 1; border: none; font-size: 13px; font-weight: 600; padding: 8px; background: #ffffff; color: var(--primary); box-shadow: 0 1px 2px rgba(0,0,0,0.06);" onclick="setAuthMode('signin')">Sign In</button>
+        <button type="button" id="tab-auth-signup" class="btn-secondary" style="flex: 1; border: none; font-size: 13px; font-weight: 600; padding: 8px; background: transparent; color: var(--text-muted);" onclick="setAuthMode('signup')">Create Account</button>
+      </div>
+
+      <div id="login-alert" class="alert-box alert-danger"></div>
+
+      <form id="login-form">
+        <input type="hidden" id="auth-mode" value="signin">
+
+        <!-- Full Name (Only shown when creating account) -->
+        <div id="signup-name-group" class="form-group" style="display: none; margin-bottom: 16px;">
+          <label class="form-label" for="login-name">Full Name</label>
+          <input type="text" id="login-name" class="form-control" placeholder="e.g. John Doe">
+        </div>
+
+        <div class="form-group" style="margin-bottom: 16px;">
+          <label class="form-label" for="login-email">Work Email Address <span class="required">*</span></label>
+          <input type="email" id="login-email" class="form-control" placeholder="name@company.com" required autocomplete="email">
+        </div>
+
+        <div class="form-group" style="margin-bottom: 20px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <label class="form-label" for="login-password">Password <span class="required">*</span></label>
+            <a href="#" id="forgot-password-link" style="font-size: 11.5px; color: var(--primary); text-decoration: none;">Forgot password?</a>
+          </div>
+          <input type="password" id="login-password" class="form-control" placeholder="••••••••" required autocomplete="current-password">
+          <span id="signup-password-help" class="form-help" style="display: none; margin-top: 4px;">Password must be at least 6 characters.</span>
+        </div>
+
+        <button type="submit" id="btn-login-submit" class="btn-primary" style="width: 100%; justify-content: center; padding: 11px;">
+          Sign In to Dashboard
+        </button>
+      </form>
+
+      <!-- Quick Demo Credentials Box -->
+      <div class="demo-credentials-box">
+        <div class="demo-title">⚡ Quick Evaluation Sign-in</div>
+        <div class="demo-btns">
+          <button type="button" class="btn-demo" onclick="fillDemo('admin@equipguard.io', 'Password123!')">
+            Admin User
+          </button>
+          <button type="button" class="btn-demo" onclick="fillDemo('manager@equipguard.io', 'Password123!')">
+            IT Manager
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       VIEW 2: MAIN DASHBOARD & APPLICATION SHELL
+       ========================================================================= -->
+  <div id="app-view" style="display: none; width: 100%;">
+    <div id="app-container">
+
+      <!-- Dark Navy Sidebar -->
+      <aside class="sidebar">
+        <div class="sidebar-header">
+          <div class="sidebar-logo">EG</div>
+          <div class="sidebar-title">
+            <h1>EquipGuard</h1>
+            <p>Warranty Center</p>
+          </div>
+        </div>
+
+        <nav class="sidebar-nav">
+          <div class="nav-section-title">Main Menu</div>
+          <div class="nav-item active" data-tab="dashboard">
+            <span class="nav-icon">📊</span>
+            <span>Dashboard</span>
+          </div>
+          <div class="nav-item" data-tab="devices">
+            <span class="nav-icon">💻</span>
+            <span>Device Inventory</span>
+          </div>
+          <div class="nav-item" data-tab="warranties">
+            <span class="nav-icon">🛡️</span>
+            <span>Warranty Center</span>
+            <span id="sidebar-expiring-badge" class="nav-badge" style="display: none;">0</span>
+          </div>
+          <div class="nav-item" data-tab="reports">
+            <span class="nav-icon">📈</span>
+            <span>Reports & Analytics</span>
+          </div>
+
+          <div class="nav-section-title" style="margin-top: 12px;">Configuration</div>
+          <div class="nav-item" data-tab="settings">
+            <span class="nav-icon">⚙️</span>
+            <span>Settings & Cloud</span>
+          </div>
+        </nav>
+
+        <div class="sidebar-footer">
+          <div class="user-profile-widget">
+            <img id="sidebar-user-avatar" class="user-avatar" src="" alt="User">
+            <div class="user-info">
+              <div id="sidebar-user-name" class="user-name">Loading...</div>
+              <div id="sidebar-user-role" class="user-role">Administrator</div>
+            </div>
+            <button class="btn-logout" id="btn-logout" title="Sign Out">
+              <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Main Workspace -->
+      <main class="main-content">
+
+        <!-- Top Header Navigation -->
+        <header class="top-header">
+          <div class="header-left">
+            <div class="search-container">
+              <svg class="search-icon" width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+              <input type="text" id="global-search-input" class="search-input" placeholder="Search devices by serial #, name, or model...">
+            </div>
+          </div>
+
+          <div class="header-right">
+            <!-- Google Drive Cloud Sync Status Pill -->
+            <div id="cloud-sync-pill" class="sync-status-pill" title="Database status">
+              <span class="status-indicator-dot"></span>
+              <span id="cloud-sync-text">Local Storage</span>
+            </div>
+
+            <!-- Browser Notifications Toggle -->
+            <button type="button" id="btn-browser-notif" class="header-btn-icon" title="Enable Desktop Browser Notifications">
+              🔔
+            </button>
+
+            <!-- Notifications Drawer Bell -->
+            <div style="position: relative;">
+              <button type="button" id="btn-notification-bell" class="header-btn-icon" title="View Notifications">
+                <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+                <span id="notif-count-badge" class="notif-badge-pill" style="display: none;">0</span>
+              </button>
+
+              <!-- Notifications Dropdown / Drawer -->
+              <div id="notification-drawer" class="notification-drawer">
+                <div class="notif-header">
+                  <span class="notif-title">Warranty Notifications</span>
+                  <button type="button" id="btn-mark-all-read" class="notif-mark-all-btn">Mark all read</button>
+                </div>
+                <div id="notif-items-list" class="notif-list">
+                  <div style="padding: 24px; text-align: center; color: var(--text-muted); font-size: 13px;">No new notifications.</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- "+ Add Device" Button -->
+            <button type="button" id="btn-header-add-device" class="btn-primary">
+              <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+              <span>Add Device</span>
+            </button>
+          </div>
+        </header>
+
+        <!-- Dynamic Page Content -->
+        <div class="page-body">
+
+          <!-- TAB 1: DASHBOARD -->
+          <section id="tab-dashboard" class="tab-content">
+            <div class="page-header">
+              <h2 class="page-title">Executive Dashboard</h2>
+              <p class="page-subtitle">Real-time warranty status distribution, upcoming expirations, and recent audit activity.</p>
+            </div>
+
+            <!-- 5 Summary KPI Cards -->
+            <div class="metrics-grid">
+              <div class="metric-card">
+                <div class="metric-card-top">
+                  <span class="metric-label">Total Devices</span>
+                  <div class="metric-icon-box metric-icon-blue">💻</div>
+                </div>
+                <div id="metric-total-devices" class="metric-value">0</div>
+                <div class="metric-meta">Across 9 office categories</div>
+              </div>
+
+              <div class="metric-card">
+                <div class="metric-card-top">
+                  <span class="metric-label">Active Warranties</span>
+                  <div class="metric-icon-box metric-icon-green">🛡️</div>
+                </div>
+                <div id="metric-active-warranties" class="metric-value">0</div>
+                <div id="metric-active-percent" class="metric-meta metric-trend-up">0% covered</div>
+              </div>
+
+              <div class="metric-card metric-card-expiring">
+                <div class="metric-card-top">
+                  <span class="metric-label">Expiring Soon</span>
+                  <div class="metric-icon-box metric-icon-amber">⚠️</div>
+                </div>
+                <div id="metric-expiring-soon" class="metric-value" style="color: var(--warning);">0</div>
+                <div class="metric-meta">Within next 30 days</div>
+              </div>
+
+              <div class="metric-card metric-card-expired">
+                <div class="metric-card-top">
+                  <span class="metric-label">Expired Warranties</span>
+                  <div class="metric-icon-box metric-icon-red">🛑</div>
+                </div>
+                <div id="metric-expired-warranties" class="metric-value" style="color: var(--danger);">0</div>
+                <div class="metric-meta">Renewal required</div>
+              </div>
+
+              <div class="metric-card">
+                <div class="metric-card-top">
+                  <span class="metric-label">Warranty Alerts</span>
+                  <div class="metric-icon-box metric-icon-purple">🔔</div>
+                </div>
+                <div id="metric-unread-notifs" class="metric-value">0</div>
+                <div class="metric-meta">Unread notifications</div>
+              </div>
+            </div>
+
+            <!-- Charts & Visual Analytics Grid -->
+            <div class="dashboard-split-grid">
+              <!-- Chart 1: Warranty Status Distribution -->
+              <div class="card">
+                <div class="card-header">
+                  <div>
+                    <h3 class="card-title">Warranty Status Distribution</h3>
+                    <p class="card-subtitle">Active, Expiring Soon (≤30d), and Expired</p>
+                  </div>
+                </div>
+                <div class="card-body">
+                  <div class="chart-wrapper">
+                    <canvas id="chart-warranty-status"></canvas>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Chart 2: Devices by Category -->
+              <div class="card">
+                <div class="card-header">
+                  <div>
+                    <h3 class="card-title">Devices by Category</h3>
+                    <p class="card-subtitle">Equipment breakdown across office categories</p>
+                  </div>
+                </div>
+                <div class="card-body">
+                  <div class="chart-wrapper">
+                    <canvas id="chart-devices-category"></canvas>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Split Grid 2: Upcoming Expirations & System Activity -->
+            <div class="dashboard-split-grid">
+              <!-- Upcoming Expirations -->
+              <div class="card">
+                <div class="card-header">
+                  <div>
+                    <h3 class="card-title">Upcoming Warranty Expirations</h3>
+                    <p class="card-subtitle">Urgent equipment requiring immediate renewal</p>
+                  </div>
+                  <button type="button" class="btn-secondary" style="padding: 4px 10px; font-size: 12px;" onclick="switchTab('warranties')">View All</button>
+                </div>
+                <div class="card-body" style="padding: 16px;">
+                  <div id="upcoming-expirations-list" class="expiring-list">
+                    <!-- Populated dynamically -->
+                  </div>
+                </div>
+              </div>
+
+              <!-- Recent Activity & Recently Added -->
+              <div class="card">
+                <div class="card-header">
+                  <div>
+                    <h3 class="card-title">Recent System Activity</h3>
+                    <p class="card-subtitle">Audit log of inventory additions, updates and alerts</p>
+                  </div>
+                </div>
+                <div class="card-body" style="padding: 20px;">
+                  <div id="activity-timeline" class="activity-timeline">
+                    <!-- Populated dynamically -->
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- TAB 2: DEVICE INVENTORY MANAGEMENT -->
+          <section id="tab-devices" class="tab-content" style="display: none;">
+            <div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-end;">
+              <div>
+                <h2 class="page-title">Device Inventory</h2>
+                <p class="page-subtitle">Add, edit, inspect, and manage enterprise devices and assigned users.</p>
+              </div>
+              <button type="button" class="btn-primary" onclick="openAddDeviceModal()">
+                + Register New Device
+              </button>
+            </div>
+
+            <!-- Filter and Search Toolbar -->
+            <div class="filter-bar">
+              <div class="filter-controls-left">
+                <select id="device-filter-category" class="filter-select">
+                  <option value="all">All Categories</option>
+                  <option value="Laptop">Laptop</option>
+                  <option value="Desktop">Desktop</option>
+                  <option value="Printer">Printer</option>
+                  <option value="Monitor">Monitor</option>
+                  <option value="Router">Router</option>
+                  <option value="CCTV">CCTV</option>
+                  <option value="UPS">UPS</option>
+                  <option value="Mobile Phone">Mobile Phone</option>
+                  <option value="Other">Other</option>
+                </select>
+
+                <select id="device-filter-department" class="filter-select">
+                  <option value="all">All Departments</option>
+                  <option value="IT">IT</option>
+                  <option value="Finance">Finance</option>
+                  <option value="Human Resources">Human Resources</option>
+                  <option value="Operations">Operations</option>
+                  <option value="Sales & Marketing">Sales & Marketing</option>
+                  <option value="Customer Support">Customer Support</option>
+                  <option value="Executive">Executive</option>
+                  <option value="Warehouse">Warehouse</option>
+                  <option value="Legal">Legal</option>
+                </select>
+
+                <select id="device-filter-status" class="filter-select">
+                  <option value="all">All Warranty Statuses</option>
+                  <option value="Active">Active</option>
+                  <option value="Expiring Soon">Expiring Soon</option>
+                  <option value="Expired">Expired</option>
+                </select>
+              </div>
+
+              <div style="font-size: 13px; color: var(--text-muted);">
+                Showing <span id="devices-count-label" style="font-weight: 600; color: var(--text-main);">0</span> devices
+              </div>
+            </div>
+
+            <!-- Devices Table -->
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Device</th>
+                    <th>Category</th>
+                    <th>Serial Number</th>
+                    <th>Assigned To</th>
+                    <th>Department</th>
+                    <th>Warranty Expiration</th>
+                    <th>Status</th>
+                    <th style="text-align: right;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="devices-table-body">
+                  <!-- Populated dynamically -->
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <!-- TAB 3: WARRANTY CENTER -->
+          <section id="tab-warranties" class="tab-content" style="display: none;">
+            <div class="page-header">
+              <h2 class="page-title">Warranty Management Center</h2>
+              <p class="page-subtitle">Dedicated horizon tracking, countdown monitors, and warranty renewals.</p>
+            </div>
+
+            <!-- Quick Horizon Filters -->
+            <div style="display: flex; gap: 10px; margin-bottom: 24px; flex-wrap: wrap;">
+              <button type="button" class="btn-secondary warranty-quick-filter active" data-filter="all">All Warranties</button>
+              <button type="button" class="btn-secondary warranty-quick-filter" data-filter="7">Expiring within 7 Days</button>
+              <button type="button" class="btn-secondary warranty-quick-filter" data-filter="30">Expiring within 30 Days</button>
+              <button type="button" class="btn-secondary warranty-quick-filter" data-filter="expired">Expired Warranties</button>
+              <button type="button" class="btn-secondary warranty-quick-filter" data-filter="active">Healthy / Active</button>
+            </div>
+
+            <!-- Warranties Table -->
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Device</th>
+                    <th>Serial #</th>
+                    <th>Assigned User</th>
+                    <th>Warranty Period</th>
+                    <th>Countdown / Remaining</th>
+                    <th>Status</th>
+                    <th style="text-align: right;">Action</th>
+                  </tr>
+                </thead>
+                <tbody id="warranties-table-body">
+                  <!-- Populated dynamically -->
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <!-- TAB 4: REPORTS & ANALYTICS -->
+          <section id="tab-reports" class="tab-content" style="display: none;">
+            <div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-end;">
+              <div>
+                <h2 class="page-title">Reports & Audit Analytics</h2>
+                <p class="page-subtitle">Export compliance audits, horizon analyses, and inventory spreadsheets.</p>
+              </div>
+              <div style="display: flex; gap: 10px;">
+                <button type="button" id="btn-export-excel" class="btn-secondary">
+                  📊 Export to Excel (.xlsx)
+                </button>
+                <button type="button" id="btn-export-pdf" class="btn-primary">
+                  📑 Export Audit Report (.pdf)
+                </button>
+              </div>
+            </div>
+
+            <!-- Expiration Horizon Metrics Grid -->
+            <div class="metrics-grid" style="margin-bottom: 28px;">
+              <div class="metric-card">
+                <div class="metric-label">Expiring This Month</div>
+                <div id="report-metric-this-month" class="metric-value">0</div>
+                <div class="metric-meta">Current calendar month</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-label">Next 30 Days</div>
+                <div id="report-metric-30d" class="metric-value">0</div>
+                <div class="metric-meta">Critical milestone</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-label">Next 60 Days</div>
+                <div id="report-metric-60d" class="metric-value">0</div>
+                <div class="metric-meta">Upcoming budget horizon</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-label">Next 90 Days</div>
+                <div id="report-metric-90d" class="metric-value">0</div>
+                <div class="metric-meta">Quarterly renewal cycle</div>
+              </div>
+            </div>
+
+            <!-- Analytics Charts Grid -->
+            <div class="dashboard-split-grid">
+              <div class="card">
+                <div class="card-header">
+                  <h3 class="card-title">Warranty Status by Department</h3>
+                </div>
+                <div class="card-body">
+                  <div class="chart-wrapper">
+                    <canvas id="chart-department-status"></canvas>
+                  </div>
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="card-header">
+                  <h3 class="card-title">Asset Value & Coverage Overview</h3>
+                </div>
+                <div class="card-body" style="padding: 24px;">
+                  <div style="margin-bottom: 20px;">
+                    <div style="font-size: 13px; color: var(--text-muted);">Total Monitored Asset Value</div>
+                    <div id="report-total-asset-val" style="font-size: 32px; font-weight: 700; color: var(--primary);">$0.00</div>
+                  </div>
+                  <div style="font-size: 13px; line-height: 1.6; color: var(--text-muted);">
+                    All reports are formatted according to enterprise audit standards with date-stamped compliance logs, active warranty percentages, and serialized hardware verification.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- TAB 5: SETTINGS & INTEGRATIONS -->
+          <section id="tab-settings" class="tab-content" style="display: none;">
+            <div class="page-header">
+              <h2 class="page-title">Settings & Cloud Integrations</h2>
+              <p class="page-subtitle">Configure Google Drive Excel synchronization, Firebase credentials, and alert milestones.</p>
+            </div>
+
+            <div class="dashboard-split-grid">
+              <!-- Google Drive Live Integration Status Card -->
+              <div class="card" style="grid-column: 1 / -1;">
+                <div class="card-header" style="background: linear-gradient(135deg, #0f172a, #1e293b); color: #ffffff;">
+                  <div style="display: flex; align-items: center; gap: 14px;">
+                    <svg width="28" height="28" viewBox="0 0 87.3 78" fill="none">
+                      <path d="M6.6 66.85l3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8H0c0 1.55.4 3.1 1.2 4.5l5.4 9.35z" fill="#0066DA"/>
+                      <path d="M43.65 25L29.9 1.2c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44c-.8 1.4-1.2 2.95-1.2 4.5h27.5L43.65 25z" fill="#00AC47"/>
+                      <path d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5H59.8l5.95 10.3 7.8 13.5z" fill="#EA4335"/>
+                      <path d="M43.65 25L57.4 1.2C56.05.4 54.5 0 52.9 0H34.4c-1.6 0-3.15.4-4.5 1.2L43.65 25z" fill="#00832D"/>
+                      <path d="M59.8 53H27.5L13.75 76.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.4 4.5-1.2L59.8 53z" fill="#2684FC"/>
+                      <path d="M73.4 26.5l-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3L43.65 25l16.15 28h27.5c0-1.55-.4-3.1-1.2-4.5l-12.7-22z" fill="#FFBA00"/>
+                    </svg>
+                    <div>
+                      <h3 class="card-title" style="color: #ffffff; font-size: 16px;">Google Drive Enterprise Integration</h3>
+                      <p class="card-subtitle" style="color: #94a3b8;">Primary Excel Workbook: <code>Device_Warranty_Database.xlsx</code></p>
+                    </div>
+                  </div>
+                  <div id="drive-header-status-badge">
+                    <span class="badge badge-secondary" style="background: rgba(255,255,255,0.1); color: #cbd5e1;">Checking Status...</span>
+                  </div>
+                </div>
+
+                <div class="card-body" style="padding: 24px;">
+                  <!-- Live Diagnostics Banner -->
+                  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px;">
+                    <div style="background: #f8fafc; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 16px;">
+                      <div style="font-size: 11.5px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Connection Status</div>
+                      <div id="settings-drive-status" style="font-size: 15px; font-weight: 700; color: var(--text-main); margin-top: 6px; display: flex; align-items: center; gap: 8px;">
+                        <span class="status-indicator-dot"></span> Checking...
+                      </div>
+                      <div id="settings-drive-time" style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Real-time API sync</div>
+                    </div>
+
+                    <div style="background: #f8fafc; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 16px;">
+                      <div style="font-size: 11.5px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Service Account Identity</div>
+                      <div id="settings-drive-email-box" style="margin-top: 6px;">
+                        <span id="settings-drive-email" style="font-size: 12.5px; font-weight: 600; color: var(--primary); word-break: break-all;">Not Configured</span>
+                      </div>
+                      <button type="button" class="copy-btn" id="btn-copy-sa-email" style="margin-top: 6px; display: none;" onclick="copyServiceAccountEmail()">📋 Copy Email</button>
+                    </div>
+
+                    <div style="background: #f8fafc; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 16px;">
+                      <div style="font-size: 11.5px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Cloud Database Target</div>
+                      <div style="font-size: 13.5px; font-weight: 700; color: var(--text-main); margin-top: 6px;">Device_Warranty_Database.xlsx</div>
+                      <div id="settings-drive-fileid" style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">4 Workbook Sheets (Devices, Notifications, Logs, Settings)</div>
+                    </div>
+                  </div>
+
+                  <!-- Quick Action Buttons -->
+                  <div style="display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap;">
+                    <button type="button" id="btn-test-drive" class="btn-primary" style="background: #0f172a;">
+                      ⚡ Test Google Drive API
+                    </button>
+                    <button type="button" id="btn-sync-drive" class="btn-secondary">
+                      🔄 Force Sync Database Now
+                    </button>
+                    <a id="btn-open-in-drive" href="#" target="_blank" class="btn-secondary" style="display: none; align-items: center; gap: 6px; text-decoration: none;">
+                      ↗ Open Database in Google Drive
+                    </a>
+                  </div>
+
+                  <!-- Direct Google Drive Sharing Card -->
+                  <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: var(--radius-md); padding: 16px; margin-bottom: 24px;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+                      <div>
+                        <div style="font-size: 13.5px; font-weight: 700; color: #1e40af;">Share Cloud Database With Your Personal Google Account</div>
+                        <div style="font-size: 12px; color: #3b82f6; margin-top: 2px;">Enter your Gmail or Google Workspace email to see this Excel file in your Google Drive's "Shared with me".</div>
+                      </div>
+                      <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        <input type="email" id="input-share-drive-email" placeholder="youremail@gmail.com" style="padding: 7px 12px; border: 1px solid #93c5fd; border-radius: 6px; font-size: 12.5px; width: 240px; outline: none; background: #ffffff;">
+                        <button type="button" id="btn-share-drive" class="btn-primary" style="background: #2563eb; padding: 7px 14px; font-size: 12.5px;">Grant Access</button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Step-by-Step Interactive Google Cloud Setup Guide -->
+                  <div style="border-top: 1px solid var(--border-color); padding-top: 24px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                      <div>
+                        <h4 style="font-size: 16px; font-weight: 700; color: var(--text-main);">Google Cloud Project & Service Account Setup Guide</h4>
+                        <p style="font-size: 13px; color: var(--text-muted);">Follow these 4 simple steps to connect your personal or organization Google Drive:</p>
+                      </div>
+                      <span class="badge badge-secondary">Quick 3-Minute Setup</span>
+                    </div>
+
+                    <div class="wizard-steps">
+                      <!-- Step 1 -->
+                      <div class="wizard-step">
+                        <div class="step-number">1</div>
+                        <div class="step-body">
+                          <div class="step-title">Create or Select a Google Cloud Project</div>
+                          <div class="step-desc">
+                            Navigate to the Google Cloud Console. Click <strong>New Project</strong>, name it <code>warranty-management</code>, and click <strong>Create</strong>.
+                          </div>
+                          <a href="https://console.cloud.google.com/projectcreate" target="_blank" class="btn-secondary" style="display: inline-flex; margin-top: 8px; font-size: 12px; padding: 5px 12px; text-decoration: none;">
+                            ↗ Open Google Cloud Console
+                          </a>
+                        </div>
+                      </div>
+
+                      <!-- Step 2 -->
+                      <div class="wizard-step">
+                        <div class="step-number">2</div>
+                        <div class="step-body">
+                          <div class="step-title">Enable Google Drive API</div>
+                          <div class="step-desc">
+                            In your Google Cloud project, open the API Library and click the blue <strong>Enable</strong> button for the Google Drive API.
+                          </div>
+                          <a href="https://console.cloud.google.com/apis/library/drive.googleapis.com" target="_blank" class="btn-secondary" style="display: inline-flex; margin-top: 8px; font-size: 12px; padding: 5px 12px; text-decoration: none;">
+                            ↗ Enable Google Drive API in Cloud Console
+                          </a>
+                        </div>
+                      </div>
+
+                      <!-- Step 3 -->
+                      <div class="wizard-step">
+                        <div class="step-number">3</div>
+                        <div class="step-body">
+                          <div class="step-title">Create Service Account & Generate JSON Key</div>
+                          <div class="step-desc">
+                            Go to <strong>IAM & Admin > Service Accounts > Create Service Account</strong>. Name it <code>drive-sa</code>, grant role <strong>Editor</strong>, then click into the service account > <strong>Keys > Add Key > Create new key > JSON</strong>. A <code>.json</code> file will download to your computer.
+                          </div>
+                          <a href="https://console.cloud.google.com/iam-admin/serviceaccounts/create" target="_blank" class="btn-secondary" style="display: inline-flex; margin-top: 8px; font-size: 12px; padding: 5px 12px; text-decoration: none;">
+                            ↗ Create Service Account
+                          </a>
+                        </div>
+                      </div>
+
+                      <!-- Step 4 -->
+                      <div class="wizard-step">
+                        <div class="step-number">4</div>
+                        <div class="step-body">
+                          <div class="step-title">Connect Credentials to EquipGuard</div>
+                          <div class="step-desc">
+                            Upload your downloaded <code>service_account.json</code> file below, or paste its contents:
+                          </div>
+
+                          <!-- Dropzone Uploader -->
+                          <div id="drive-json-dropzone" class="dropzone-box" onclick="document.getElementById('drive-file-input').click()">
+                            <input type="file" id="drive-file-input" accept=".json" style="display: none;" onchange="handleDriveFileSelected(event)">
+                            <div style="font-size: 24px; margin-bottom: 6px;">📂</div>
+                            <div style="font-size: 13.5px; font-weight: 600; color: var(--text-main);">Click to select or drag & drop service_account.json</div>
+                            <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Valid Google Cloud Service Account JSON file</div>
+                          </div>
+
+                          <!-- Alternative Paste JSON Toggle -->
+                          <div style="margin-top: 12px;">
+                            <button type="button" class="btn-secondary" style="font-size: 12px; padding: 4px 10px;" onclick="togglePasteJsonBox()">
+                              ✏ Or Paste JSON Text
+                            </button>
+                            <div id="paste-json-container" style="display: none; margin-top: 10px;">
+                              <textarea id="paste-json-textarea" class="form-control" rows="5" placeholder='Paste your {"type": "service_account", ...} JSON key here...' style="font-family: monospace; font-size: 12px;"></textarea>
+                              <button type="button" class="btn-primary" style="margin-top: 8px; font-size: 12px;" onclick="handlePasteJsonSubmit()">
+                                Save & Connect Credentials
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Firebase Authentication Card -->
+              <div class="card">
+                <div class="card-header">
+                  <h3 class="card-title">Firebase Authentication Status</h3>
+                </div>
+                <div class="card-body">
+                  <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
+                    Active Firebase project: <strong>kmn-it-warranty</strong> with Email & Password authentication.
+                  </p>
+
+                  <div style="background: #f8fafc; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 14px; margin-bottom: 18px;">
+                    <div style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px;">Project Identifier:</div>
+                    <div style="font-size: 14px; font-weight: 600; color: var(--success); display: flex; align-items: center; gap: 6px;">
+                      <span class="status-indicator-dot" style="background-color: var(--success);"></span> kmn-it-warranty
+                    </div>
+                    <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Connected via SDK 13.4.0 & Identity Toolkit REST</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Notification Rules Card -->
+            <div class="card" style="margin-top: 24px;">
+              <div class="card-header">
+                <h3 class="card-title">Automated Notification Rules</h3>
+              </div>
+              <div class="card-body">
+                <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
+                  Automatic milestone notifications are generated without duplicates for:
+                </p>
+                <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                  <span class="badge badge-secondary">30 Days Before Expiration</span>
+                  <span class="badge badge-secondary">14 Days Before Expiration</span>
+                  <span class="badge badge-warning">7 Days Before Expiration</span>
+                  <span class="badge badge-danger">3 Days Before Expiration</span>
+                  <span class="badge badge-danger">On Expiration Date (0 Days)</span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       MODAL 1: ADD / EDIT DEVICE MODAL (All 17 fields)
+       ========================================================================= -->
+  <div id="device-modal" class="modal-backdrop">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 id="device-modal-title" class="modal-title">Register New Device</h3>
+        <button type="button" class="modal-close-btn" onclick="closeDeviceModal()">&times;</button>
+      </div>
+
+      <form id="device-form">
+        <div class="modal-body">
+          <input type="hidden" id="form-is-edit" value="false">
+          
+          <div class="form-grid">
+            <!-- 1. Device ID -->
+            <div class="form-group">
+              <label class="form-label" for="form-device-id">Device ID</label>
+              <input type="text" id="form-device-id" class="form-control" disabled placeholder="Automatically Generated">
+              <span class="form-help">Auto-assigned unique identifier.</span>
+            </div>
+
+            <!-- 2. Device Name -->
+            <div class="form-group">
+              <label class="form-label" for="form-device-name">Device Name <span class="required">*</span></label>
+              <input type="text" id="form-device-name" class="form-control" placeholder="e.g. MacBook Pro 16 M3" required>
+            </div>
+
+            <!-- 3. Category -->
+            <div class="form-group">
+              <label class="form-label" for="form-category">Category <span class="required">*</span></label>
+              <select id="form-category" class="form-control" required>
+                <option value="Laptop">Laptop</option>
+                <option value="Desktop">Desktop</option>
+                <option value="Printer">Printer</option>
+                <option value="Monitor">Monitor</option>
+                <option value="Router">Router</option>
+                <option value="CCTV">CCTV</option>
+                <option value="UPS">UPS</option>
+                <option value="Mobile Phone">Mobile Phone</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+
+            <!-- 4. Brand -->
+            <div class="form-group">
+              <label class="form-label" for="form-brand">Brand</label>
+              <input type="text" id="form-brand" class="form-control" placeholder="e.g. Apple, Dell, HP, Cisco">
+            </div>
+
+            <!-- 5. Model Number -->
+            <div class="form-group">
+              <label class="form-label" for="form-model">Model Number</label>
+              <input type="text" id="form-model" class="form-control" placeholder="e.g. A2991, Latitude 5540">
+            </div>
+
+            <!-- 6. Serial Number -->
+            <div class="form-group">
+              <label class="form-label" for="form-serial">Serial Number <span class="required">*</span></label>
+              <input type="text" id="form-serial" class="form-control" placeholder="e.g. C02G87Y9MD6R" required>
+              <span class="form-help">Unique hardware serial number. Duplicate checked.</span>
+            </div>
+
+            <!-- 7. Assigned User -->
+            <div class="form-group">
+              <label class="form-label" for="form-user">Assigned Employee / User</label>
+              <input type="text" id="form-user" class="form-control" placeholder="e.g. Alex Mercer, Unassigned">
+            </div>
+
+            <!-- 8. Department -->
+            <div class="form-group">
+              <label class="form-label" for="form-department">Department / Location</label>
+              <select id="form-department" class="form-control">
+                <option value="IT">IT</option>
+                <option value="Finance">Finance</option>
+                <option value="Human Resources">Human Resources</option>
+                <option value="Operations">Operations</option>
+                <option value="Sales & Marketing">Sales & Marketing</option>
+                <option value="Customer Support">Customer Support</option>
+                <option value="Executive">Executive</option>
+                <option value="Warehouse">Warehouse</option>
+                <option value="Legal">Legal</option>
+              </select>
+            </div>
+
+            <!-- 9. Purchase Date -->
+            <div class="form-group">
+              <label class="form-label" for="form-purchase-date">Purchase Date</label>
+              <input type="date" id="form-purchase-date" class="form-control">
+            </div>
+
+            <!-- 10. Purchase Price -->
+            <div class="form-group">
+              <label class="form-label" for="form-price">Purchase Price ($)</label>
+              <input type="number" step="0.01" min="0" id="form-price" class="form-control" placeholder="0.00">
+            </div>
+
+            <!-- 11. Supplier -->
+            <div class="form-group">
+              <label class="form-label" for="form-supplier">Supplier / Vendor</label>
+              <input type="text" id="form-supplier" class="form-control" placeholder="e.g. CDW, Apple Business">
+            </div>
+
+            <!-- 12. Warranty Start Date -->
+            <div class="form-group">
+              <label class="form-label" for="form-warranty-start">Warranty Start Date <span class="required">*</span></label>
+              <input type="date" id="form-warranty-start" class="form-control" required onchange="recalculateDuration()">
+            </div>
+
+            <!-- 13. Warranty End Date -->
+            <div class="form-group">
+              <label class="form-label" for="form-warranty-end">Warranty End Date <span class="required">*</span></label>
+              <input type="date" id="form-warranty-end" class="form-control" required onchange="recalculateDuration()">
+            </div>
+
+            <!-- 14. Warranty Duration -->
+            <div class="form-group">
+              <label class="form-label" for="form-duration">Warranty Duration (Months)</label>
+              <input type="number" id="form-duration" class="form-control" placeholder="12" readonly>
+              <span class="form-help">Calculated automatically from start & end dates.</span>
+            </div>
+
+            <!-- 15. Invoice Number -->
+            <div class="form-group">
+              <label class="form-label" for="form-invoice">Invoice Number</label>
+              <input type="text" id="form-invoice" class="form-control" placeholder="e.g. INV-2025-098">
+            </div>
+
+            <!-- 16. Image URL -->
+            <div class="form-group">
+              <label class="form-label" for="form-image-url">Device Image URL</label>
+              <input type="url" id="form-image-url" class="form-control" placeholder="https://...">
+            </div>
+
+            <!-- 17. Notes / Remarks -->
+            <div class="form-group full-width">
+              <label class="form-label" for="form-notes">Notes / Remarks</label>
+              <textarea id="form-notes" class="form-control" rows="3" placeholder="Condition, location details, special instructions..."></textarea>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary" onclick="closeDeviceModal()">Cancel</button>
+          <button type="submit" id="btn-save-device" class="btn-primary">Save Device</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       MODAL 2: DEVICE DETAILS & AUDIT INSPECTOR MODAL
+       ========================================================================= -->
+  <div id="device-details-modal" class="modal-backdrop">
+    <div class="modal-dialog" style="max-width: 680px;">
+      <div class="modal-header">
+        <h3 class="modal-title">Device Specification & Warranty Card</h3>
+        <button type="button" class="modal-close-btn" onclick="closeDeviceDetailsModal()">&times;</button>
+      </div>
+      <div class="modal-body" id="device-details-body">
+        <!-- Rendered dynamically -->
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" onclick="closeDeviceDetailsModal()">Close</button>
+        <button type="button" id="btn-edit-from-details" class="btn-primary">Edit Device</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Firebase 13.4.0 SDK Integration -->
+  <script type="module">
+    // Import the functions you need from the SDKs you need
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-app.js";
+    import { getAnalytics } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-analytics.js";
+    import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js";
+
+    // Your web app's Firebase configuration
+    // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+    const firebaseConfig = {
+      apiKey: "AIzaSyC8s9oRsWxzExlhjvIZqVoYZBsjJyG47ts",
+      authDomain: "kmn-it-warranty.firebaseapp.com",
+      projectId: "kmn-it-warranty",
+      storageBucket: "kmn-it-warranty.firebasestorage.app",
+      messagingSenderId: "270307773370",
+      appId: "1:270307773370:web:dd7d54f4187e3b2b8cab83",
+      measurementId: "G-RNJ3CP4ECJ"
+    };
+
+    // Initialize Firebase
+    try {
+      const app = initializeApp(firebaseConfig);
+      let analytics = null;
+      try {
+        analytics = getAnalytics(app);
+      } catch (e) {
+        console.warn("Analytics not supported in current environment:", e);
+      }
+      const auth = getAuth(app);
+      window.firebaseApp = app;
+      window.firebaseAuth = auth;
+      window.firebaseConfig = firebaseConfig;
+      window.firebaseSignIn = signInWithEmailAndPassword;
+      window.firebaseSignUp = createUserWithEmailAndPassword;
+      window.firebaseSignOut = signOut;
+      console.log("Firebase App initialized with project kmn-it-warranty");
+    } catch (err) {
+      console.error("Firebase initialization error:", err);
+    }
+  </script>
+
+  <!-- Main JavaScript App Logic -->
+  <script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,120 @@
+# ==============================================================================
+# EquipGuard Enterprise .gitignore
+# Device Warranty Management & Notification System
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. SECURITY & SECRETS (CRITICAL - NEVER COMMIT TO VERSION CONTROL)
+# ------------------------------------------------------------------------------
+# Local secret TOML configurations containing Firebase & Google Drive keys
+secret.toml
+secrets.toml
+*secret*.toml
+**/*secret*.toml
+.streamlit/secrets.toml
+warranty_system/.streamlit/secrets.toml
+**/.streamlit/secrets.toml
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Service account JSON keys & certificate files
+credentials/*.json
+warranty_system/credentials/*.json
+**/credentials/*.json
+*service_account*.json
+**/*service_account*.json
+*kmn-warranty-system*.json
+*firebase*.json
+!*.example
+!**/.gitkeep
+
+# SSL & Encryption certificates/keys
+*.pem
+*.key
+*.pfx
+*.p12
+
+# ------------------------------------------------------------------------------
+# 2. LOCAL DATA & GENERATED REPORTS (DATABASE RUNS CLOUD-FIRST IN GOOGLE DRIVE)
+# ------------------------------------------------------------------------------
+# Local cached Excel workbooks (Cloud master resides in Google Drive)
+data/*.xlsx
+warranty_system/data/*.xlsx
+**/data/*.xlsx
+*.xlsx
+*.xls
+*.csv
+
+# Generated PDF audit reports & export artifacts
+reports/*.pdf
+reports/*.xlsx
+warranty_system/reports/*.pdf
+warranty_system/reports/*.xlsx
+**/reports/*.pdf
+**/reports/*.xlsx
+
+# SQLite / Local Databases
+*.sqlite
+*.sqlite3
+*.db
+
+# ------------------------------------------------------------------------------
+# 3. PYTHON RUNTIME & BYTECODE CACHES
+# ------------------------------------------------------------------------------
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Distribution / Packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# ------------------------------------------------------------------------------
+# 4. VIRTUAL ENVIRONMENTS
+# ------------------------------------------------------------------------------
+venv/
+env/
+.venv/
+.env/
+ENV/
+env.bak/
+venv.bak/
+
+# ------------------------------------------------------------------------------
+# 5. LOGS & TEMPORARY RUNTIME FILES
+# ------------------------------------------------------------------------------
+*.log
+logs/
+*.tmp
+*.bak
+
+# ------------------------------------------------------------------------------
+# 6. IDE & EDITOR ARTIFACTS
+# ------------------------------------------------------------------------------
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.cursor/
+
+# ------------------------------------------------------------------------------
+# 7. OPERATING SYSTEM ARTIFACTS (Windows & macOS)
+# ------------------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
