@@ -488,7 +488,6 @@ async function handleLoginSubmit(e) {
     }
   }, 10000);
 }
-}
 
 function handleLogout() {
   localStorage.removeItem("equipguard_user");
