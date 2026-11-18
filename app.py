@@ -77,7 +77,7 @@ def handle_component_actions(component_event: dict):
 
     logger.info(f"Handling frontend action: {action} by {user_email}")
 
-    # 1. Login Action
+    # 1. Login Action (Processed exclusively by Streamlit Python Backend via Firebase)
     if action == "login":
         email = payload.get("email")
         password = payload.get("password")
@@ -85,36 +85,11 @@ def handle_component_actions(component_event: dict):
         if success and user_dict:
             st.session_state["user"] = user_dict
             st.session_state["auth_error"] = None
-            excel_db.log_activity(email, "User Login", "AUTH", f"User logged in via {user_dict.get('auth_mode')}.")
+            excel_db.log_activity(email, "User Login", "AUTH", f"User authenticated via Firebase.")
             st.session_state["toast_message"] = ("success", f"Welcome back, {user_dict.get('display_name')}!")
         else:
             st.session_state["auth_error"] = msg
             st.session_state["toast_message"] = ("error", msg)
-        st.rerun()
-
-    # 1b. Sign Up / Register Action
-    elif action == "sign_up":
-        email = payload.get("email")
-        password = payload.get("password")
-        display_name = payload.get("display_name", "")
-        success, msg, user_dict = auth_service.sign_up(email, password, display_name)
-        if success and user_dict:
-            st.session_state["user"] = user_dict
-            st.session_state["auth_error"] = None
-            excel_db.log_activity(email, "User Registration", "AUTH", f"User registered via {user_dict.get('auth_mode')}.")
-            st.session_state["toast_message"] = ("success", f"Account created! Welcome, {user_dict.get('display_name')}!")
-        else:
-            st.session_state["auth_error"] = msg
-            st.session_state["toast_message"] = ("error", msg)
-        st.rerun()
-
-    # 1c. Client-side Auth Success Notification
-    elif action == "login_success":
-        user_dict = payload.get("user")
-        if user_dict:
-            st.session_state["user"] = user_dict
-            st.session_state["auth_error"] = None
-            excel_db.log_activity(user_dict.get("email", ""), "User Login", "AUTH", "Client Firebase authenticated.")
         st.rerun()
 
     # 2. Logout Action
@@ -165,73 +140,12 @@ def handle_component_actions(component_event: dict):
         notification_manager.mark_all_as_read()
         st.rerun()
 
-    # 8. Test Google Drive Connection Action
-    elif action == "test_drive_connection":
-        drive_service._service = None
-        success, msg, details = drive_service.test_connection()
-        if success:
-            excel_db.init_database(force_refresh=True)
-            st.session_state["toast_message"] = ("success", f"Google Drive Connected! ({details.get('email')})")
-        else:
-            st.session_state["toast_message"] = ("warning", f"Drive Connection Failed: {msg}")
+    # 8. Mark All Notifications Read Action
+    elif action == "mark_all_notifications_read":
+        notification_manager.mark_all_as_read()
         st.rerun()
 
-    # 8b. Save Google Drive Service Account Credentials Action
-    elif action == "save_drive_credentials":
-        creds_json = payload.get("json_content")
-        try:
-            parsed = json.loads(creds_json) if isinstance(creds_json, str) else creds_json
-            if parsed.get("type") == "service_account" and parsed.get("client_email"):
-                target_file = config.CREDENTIALS_DIR / "service_account.json"
-                with open(target_file, "w", encoding="utf-8") as f:
-                    json.dump(parsed, f, indent=2)
-                drive_service.credentials_path = target_file
-                drive_service._service = None
-                drive_service._service_account_email = parsed.get("client_email")
-                success, msg, details = drive_service.test_connection()
-                if success:
-                    excel_db.init_database(force_refresh=True)
-                    st.session_state["toast_message"] = ("success", f"Connected to Google Drive! ({details.get('email')})")
-                else:
-                    st.session_state["toast_message"] = ("error", f"Key saved, but Drive API error: {msg}")
-            else:
-                st.session_state["toast_message"] = ("error", "Invalid Service Account JSON. Must contain 'client_email'.")
-        except Exception as e:
-            st.session_state["toast_message"] = ("error", f"Failed to parse JSON: {e}")
-        st.rerun()
-
-    # 9. Sync Google Drive Action
-    elif action == "sync_drive":
-        if drive_service.is_configured():
-            success, msg = excel_db.sync_to_drive()
-            if success:
-                st.session_state["toast_message"] = ("success", msg)
-            else:
-                st.session_state["toast_message"] = ("error", msg)
-        else:
-            st.session_state["toast_message"] = ("warning", "Google Drive credentials not configured. Cloud database offline.")
-        st.rerun()
-
-    # 9b. Share Google Drive File Action
-    elif action == "share_drive_file":
-        share_email = payload.get("email") if isinstance(payload, dict) else None
-        if not share_email:
-            st.session_state["toast_message"] = ("error", "Please provide a valid email address.")
-        elif not drive_service.is_configured():
-            st.session_state["toast_message"] = ("error", "Google Drive is not configured.")
-        else:
-            file_id = drive_service._cached_file_id or drive_service.find_file(config.EXCEL_FILENAME)
-            if not file_id:
-                st.session_state["toast_message"] = ("error", "Could not locate Excel file in Google Drive.")
-            else:
-                success, msg = drive_service.share_file_with_email(file_id, share_email)
-                if success:
-                    st.session_state["toast_message"] = ("success", msg)
-                else:
-                    st.session_state["toast_message"] = ("error", msg)
-        st.rerun()
-
-    # 10. Export to Excel (.xlsx) Action
+    # 9. Export to Excel (.xlsx) Action
     elif action == "export_excel":
         devices = device_manager.get_all_devices_enriched()
         excel_bytes = report_service.generate_excel_report(devices)
@@ -280,7 +194,6 @@ def main():
     component_state = {
         "user": st.session_state.get("user"),
         "auth_error": st.session_state.get("auth_error"),
-        "firebase_config": config.get_firebase_config(),
         "devices": devices,
         "notifications": notifications,
         "analytics": analytics,

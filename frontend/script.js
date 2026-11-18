@@ -85,11 +85,6 @@ document.addEventListener("DOMContentLoaded", function() {
 });
 
 function handleBackendSync(args) {
-  // Dynamically initialize client Firebase SDK with configuration from backend
-  if (args.firebase_config && typeof window.initFirebaseSDK === "function" && !window.firebaseAuth) {
-    window.initFirebaseSDK(args.firebase_config);
-  }
-
   if (args.user) {
     state.user = args.user;
     hideLoginAlert();
@@ -104,8 +99,7 @@ function handleBackendSync(args) {
     const submitBtn = document.getElementById("btn-login-submit");
     if (submitBtn) {
       submitBtn.disabled = false;
-      const isSignUp = document.getElementById("auth-mode") && document.getElementById("auth-mode").value === "signup";
-      submitBtn.innerText = isSignUp ? "Create Account with Firebase" : "Sign In to Dashboard";
+      submitBtn.innerText = "Sign In to Dashboard";
     }
   }
 
@@ -236,33 +230,6 @@ function initEventListeners() {
   if (btnExportExcel) btnExportExcel.addEventListener("click", () => triggerExport("excel"));
   if (btnExportPdf) btnExportPdf.addEventListener("click", () => triggerExport("pdf"));
 
-  // Settings Buttons
-  const btnTestDrive = document.getElementById("btn-test-drive");
-  const btnSyncDrive = document.getElementById("btn-sync-drive");
-  if (btnTestDrive) btnTestDrive.addEventListener("click", () => {
-    sendToStreamlit("test_drive_connection");
-    showToast("Testing Google Drive connection...", "info");
-  });
-  if (btnSyncDrive) btnSyncDrive.addEventListener("click", () => {
-    sendToStreamlit("sync_drive");
-    showToast("Syncing database with Google Drive...", "info");
-  });
-
-  const btnShareDrive = document.getElementById("btn-share-drive");
-  const inputShareEmail = document.getElementById("input-share-drive-email");
-  if (btnShareDrive) {
-    btnShareDrive.addEventListener("click", () => {
-      const email = inputShareEmail ? inputShareEmail.value.trim() : "";
-      if (!email || !email.includes("@")) {
-        showToast("Please enter a valid Google/Gmail address.", "error");
-        return;
-      }
-      sendToStreamlit("share_drive_file", { email: email });
-      showToast(`Sharing database with ${email}...`, "info");
-      if (inputShareEmail) inputShareEmail.value = "";
-    });
-  }
-
   // Edit from Details Modal Button
   const btnEditFromDetails = document.getElementById("btn-edit-from-details");
   if (btnEditFromDetails) {
@@ -320,44 +287,8 @@ function showAppView() {
 }
 
 // =========================================================================
-// Authentication Handlers
+// Authentication Handlers (Streamlit Python Backend Driven)
 // =========================================================================
-
-function setAuthMode(mode) {
-  const isSignUp = (mode === "signup");
-  const authModeInput = document.getElementById("auth-mode");
-  if (authModeInput) authModeInput.value = mode;
-
-  const nameGroup = document.getElementById("signup-name-group");
-  const pwdHelp = document.getElementById("signup-password-help");
-  const submitBtn = document.getElementById("btn-login-submit");
-  const tabIn = document.getElementById("tab-auth-signin");
-  const tabUp = document.getElementById("tab-auth-signup");
-
-  if (nameGroup) nameGroup.style.display = isSignUp ? "block" : "none";
-  if (pwdHelp) pwdHelp.style.display = isSignUp ? "block" : "none";
-  if (submitBtn) submitBtn.innerText = isSignUp ? "Create Account with Firebase" : "Sign In to Dashboard";
-
-  if (tabUp && tabIn) {
-    if (isSignUp) {
-      tabUp.style.background = "#ffffff";
-      tabUp.style.color = "var(--primary)";
-      tabUp.style.boxShadow = "0 1px 2px rgba(0,0,0,0.06)";
-      tabIn.style.background = "transparent";
-      tabIn.style.color = "var(--text-muted)";
-      tabIn.style.boxShadow = "none";
-    } else {
-      tabIn.style.background = "#ffffff";
-      tabIn.style.color = "var(--primary)";
-      tabIn.style.boxShadow = "0 1px 2px rgba(0,0,0,0.06)";
-      tabUp.style.background = "transparent";
-      tabUp.style.color = "var(--text-muted)";
-      tabUp.style.boxShadow = "none";
-    }
-  }
-
-  hideLoginAlert();
-}
 
 function hideLoginAlert() {
   const alertBox = document.getElementById("login-alert");
@@ -375,118 +306,36 @@ function showLoginAlert(msg) {
   }
 }
 
-function fillDemo(email, password) {
-  setAuthMode("signin");
-  document.getElementById("login-email").value = email;
-  document.getElementById("login-password").value = password;
-  handleLoginSubmit(new Event("submit"));
-}
-
-function translateFirebaseClientError(err) {
-  const code = err.code || "";
-  const msg = err.message || "";
-  if (code === "auth/invalid-credential" || code === "auth/wrong-password") {
-    return "Incorrect email or password. Please verify your credentials.";
-  }
-  if (code === "auth/user-not-found") {
-    return "No account found with this email address. Please click 'Create Account' above.";
-  }
-  if (code === "auth/email-already-in-use") {
-    return "An account with this email already exists. Please Sign In instead.";
-  }
-  if (code === "auth/weak-password") {
-    return "Password must be at least 6 characters long.";
-  }
-  if (code === "auth/invalid-api-key" || code === "auth/api-key-not-valid") {
-    return "Firebase Web API Key is invalid or expired. Please check your Firebase settings.";
-  }
-  return `Authentication failed: ${msg || code}`;
-}
-
-async function handleLoginSubmit(e) {
+function handleLoginSubmit(e) {
   if (e) e.preventDefault();
-  const authModeEl = document.getElementById("auth-mode");
-  const mode = authModeEl ? authModeEl.value : "signin";
   const emailInput = document.getElementById("login-email");
   const pwdInput = document.getElementById("login-password");
-  const nameInput = document.getElementById("login-name");
 
   const email = (emailInput ? emailInput.value : "").trim().toLowerCase();
   const password = pwdInput ? pwdInput.value : "";
-  const displayName = nameInput ? nameInput.value.trim() : "";
 
   if (!email || !password) {
     showLoginAlert("Please enter both email and password.");
     return;
   }
 
-  if (mode === "signup" && password.length < 6) {
-    showLoginAlert("Password must be at least 6 characters long.");
-    return;
-  }
-
   const submitBtn = document.getElementById("btn-login-submit");
   if (submitBtn) {
     submitBtn.disabled = true;
-    submitBtn.innerText = mode === "signup" ? "Creating Account in Firebase..." : "Authenticating with Firebase...";
+    submitBtn.innerText = "Signing in via Streamlit Backend...";
   }
   hideLoginAlert();
 
-  // 1. If Firebase Client SDK is loaded in window, attempt direct client authentication
-  if (window.firebaseAuth) {
-    try {
-      let userCredential = null;
-      if (mode === "signup" && typeof window.firebaseSignUp === "function") {
-        userCredential = await window.firebaseSignUp(window.firebaseAuth, email, password);
-      } else if (typeof window.firebaseSignIn === "function") {
-        userCredential = await window.firebaseSignIn(window.firebaseAuth, email, password);
-      }
+  // Send authentication request directly to Streamlit Python Backend
+  sendToStreamlit("login", { email: email, password: password });
 
-      if (userCredential && userCredential.user) {
-        const fbUser = userCredential.user;
-        const finalName = displayName || fbUser.displayName || email.split("@")[0].replace(/[._-]/g, " ").replace(/\b\w/g, l => l.toUpperCase());
-        const userObj = {
-          uid: fbUser.uid,
-          email: fbUser.email,
-          display_name: finalName,
-          role: email.includes("admin") ? "Administrator" : "Asset Manager",
-          department: "IT Operations",
-          avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${finalName}`,
-          auth_mode: "firebase_client",
-          id_token: await fbUser.getIdToken()
-        };
-
-        state.user = userObj;
-        sendToStreamlit("login_success", { user: userObj });
-        showToast(`Welcome back, ${finalName}!`, "success");
-        showAppView();
-        return;
-      }
-    } catch (fbErr) {
-      console.warn("Client Firebase Auth attempt failed:", fbErr.code || fbErr.message);
-      showLoginAlert(translateFirebaseClientError(fbErr));
-      if (submitBtn) {
-        submitBtn.disabled = false;
-        submitBtn.innerText = mode === "signup" ? "Create Account with Firebase" : "Sign In to Dashboard";
-      }
-      return;
-    }
-  }
-
-  // 2. Dispatch to Python Streamlit backend (Firebase REST API verification)
-  if (mode === "signup") {
-    sendToStreamlit("sign_up", { email, password, display_name: displayName });
-  } else {
-    sendToStreamlit("login", { email, password });
-  }
-
-  // Safety timer to re-enable button if backend takes time
+  // Timeout guard to re-enable button if network takes time
   setTimeout(() => {
     if (submitBtn && submitBtn.disabled && !state.user) {
       submitBtn.disabled = false;
-      submitBtn.innerText = mode === "signup" ? "Create Account with Firebase" : "Sign In to Dashboard";
+      submitBtn.innerText = "Sign In to Dashboard";
     }
-  }, 10000);
+  }, 12000);
 }
 
 function handleLogout() {
