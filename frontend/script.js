@@ -114,6 +114,19 @@ document.addEventListener("DOMContentLoaded", function() {
 });
 
 function handleBackendSync(args) {
+  if (args.devices) {
+    state.devices = args.devices;
+  }
+  if (args.notifications) {
+    state.notifications = args.notifications;
+  }
+  if (args.analytics) {
+    state.analytics = args.analytics;
+  }
+  if (args.cloud_sync) {
+    state.cloudSync = args.cloud_sync;
+  }
+
   if (args.user) {
     state.user = args.user;
     hideLoginAlert();
@@ -130,19 +143,6 @@ function handleBackendSync(args) {
       submitBtn.disabled = false;
       submitBtn.innerText = "Sign In to Dashboard";
     }
-  }
-
-  if (args.devices) {
-    state.devices = args.devices;
-  }
-  if (args.notifications) {
-    state.notifications = args.notifications;
-  }
-  if (args.analytics) {
-    state.analytics = args.analytics;
-  }
-  if (args.cloud_sync) {
-    state.cloudSync = args.cloud_sync;
   }
 
   // Handle direct file download requested from backend
@@ -275,47 +275,58 @@ function initEventListeners() {
 // =========================================================================
 
 function switchTab(tabName) {
-  state.activeTab = tabName;
-  document.querySelectorAll(".nav-item").forEach(item => {
-    if (item.getAttribute("data-tab") === tabName) {
-      item.classList.add("active");
-    } else {
-      item.classList.remove("active");
+  try {
+    state.activeTab = tabName;
+    document.querySelectorAll(".nav-item").forEach(item => {
+      if (item.getAttribute("data-tab") === tabName) {
+        item.classList.add("active");
+      } else {
+        item.classList.remove("active");
+      }
+    });
+
+    document.querySelectorAll(".tab-content").forEach(content => {
+      content.style.display = "none";
+    });
+
+    const targetTab = document.getElementById(`tab-${tabName}`);
+    if (targetTab) {
+      targetTab.style.display = "block";
     }
-  });
 
-  document.querySelectorAll(".tab-content").forEach(content => {
-    content.style.display = "none";
-  });
-
-  const targetTab = document.getElementById(`tab-${tabName}`);
-  if (targetTab) {
-    targetTab.style.display = "block";
+    if (tabName === "dashboard") {
+      renderDashboardCharts();
+    } else if (tabName === "reports") {
+      renderDepartmentChart();
+    }
+  } catch (e) {
+    console.error("switchTab error:", e);
   }
-
-  if (tabName === "dashboard") {
-    renderDashboardCharts();
-  } else if (tabName === "reports") {
-    renderDepartmentChart();
-  }
-
   notifyFrameHeight();
 }
 
 function showLoginView() {
-  const loginView = document.getElementById("login-view");
-  const appView = document.getElementById("app-view");
-  if (loginView) loginView.style.display = "flex";
-  if (appView) appView.style.display = "none";
+  try {
+    const loginView = document.getElementById("login-view");
+    const appView = document.getElementById("app-view");
+    if (loginView) loginView.style.setProperty("display", "flex", "important");
+    if (appView) appView.style.setProperty("display", "none", "important");
+  } catch (e) {
+    console.error("showLoginView error:", e);
+  }
   notifyFrameHeight();
 }
 
 function showAppView() {
-  const loginView = document.getElementById("login-view");
-  const appView = document.getElementById("app-view");
-  if (loginView) loginView.style.display = "none";
-  if (appView) appView.style.display = "block";
-  switchTab(state.activeTab || "dashboard");
+  try {
+    const loginView = document.getElementById("login-view");
+    const appView = document.getElementById("app-view");
+    if (loginView) loginView.style.setProperty("display", "none", "important");
+    if (appView) appView.style.setProperty("display", "block", "important");
+    switchTab(state.activeTab || "dashboard");
+  } catch (e) {
+    console.error("showAppView error:", e);
+  }
   notifyFrameHeight();
 }
 
@@ -617,65 +628,81 @@ function renderDashboardCharts() {
   if (typeof Chart === "undefined") return;
 
   // Chart 1: Warranty Status Doughnut Chart
-  const ctxStatus = document.getElementById("chart-warranty-status");
-  if (ctxStatus) {
-    const dist = state.analytics.status_distribution || { "Active": 5, "Expiring Soon": 2, "Expired": 1 };
-    if (state.charts.statusDoughnut) state.charts.statusDoughnut.destroy();
-
-    state.charts.statusDoughnut = new Chart(ctxStatus, {
-      type: "doughnut",
-      data: {
-        labels: ["Active", "Expiring Soon", "Expired"],
-        datasets: [{
-          data: [dist["Active"] || 0, dist["Expiring Soon"] || 0, dist["Expired"] || 0],
-          backgroundColor: ["#10b981", "#f59e0b", "#ef4444"],
-          borderWidth: 2,
-          borderColor: "#ffffff"
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { position: "bottom", labels: { boxWidth: 12, font: { family: "Inter", size: 12 } } }
-        },
-        cutout: "70%"
+  try {
+    const ctxStatus = document.getElementById("chart-warranty-status");
+    if (ctxStatus) {
+      const existing1 = Chart.getChart(ctxStatus);
+      if (existing1) existing1.destroy();
+      if (state.charts.statusDoughnut) {
+        try { state.charts.statusDoughnut.destroy(); } catch(e){}
       }
-    });
+
+      const dist = state.analytics.status_distribution || { "Active": 0, "Expiring Soon": 0, "Expired": 0 };
+      state.charts.statusDoughnut = new Chart(ctxStatus, {
+        type: "doughnut",
+        data: {
+          labels: ["Active", "Expiring Soon", "Expired"],
+          datasets: [{
+            data: [dist["Active"] || 0, dist["Expiring Soon"] || 0, dist["Expired"] || 0],
+            backgroundColor: ["#10b981", "#f59e0b", "#ef4444"],
+            borderWidth: 2,
+            borderColor: "#ffffff"
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: "bottom", labels: { boxWidth: 12, font: { family: "Inter", size: 12 } } }
+          },
+          cutout: "70%"
+        }
+      });
+    }
+  } catch (e) {
+    console.warn("chart-warranty-status error:", e);
   }
 
   // Chart 2: Devices by Category Bar Chart
-  const ctxCategory = document.getElementById("chart-devices-category");
-  if (ctxCategory) {
-    const catDist = state.analytics.category_distribution || {};
-    const labels = Object.keys(catDist);
-    const dataVals = Object.values(catDist);
-
-    if (state.charts.categoryBar) state.charts.categoryBar.destroy();
-
-    state.charts.categoryBar = new Chart(ctxCategory, {
-      type: "bar",
-      data: {
-        labels: labels,
-        datasets: [{
-          label: "Registered Devices",
-          data: dataVals,
-          backgroundColor: "#3b82f6",
-          borderRadius: 6
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { display: false }
-        },
-        scales: {
-          y: { beginAtZero: true, ticks: { stepSize: 1, font: { family: "Inter" } }, grid: { color: "#f1f5f9" } },
-          x: { ticks: { font: { family: "Inter", size: 11 } }, grid: { display: false } }
-        }
+  try {
+    const ctxCategory = document.getElementById("chart-devices-category");
+    if (ctxCategory) {
+      const existing2 = Chart.getChart(ctxCategory);
+      if (existing2) existing2.destroy();
+      if (state.charts.categoryBar) {
+        try { state.charts.categoryBar.destroy(); } catch(e){}
       }
-    });
+
+      const catDist = state.analytics.category_distribution || {};
+      const labels = Object.keys(catDist);
+      const dataVals = Object.values(catDist);
+
+      state.charts.categoryBar = new Chart(ctxCategory, {
+        type: "bar",
+        data: {
+          labels: labels,
+          datasets: [{
+            label: "Registered Devices",
+            data: dataVals,
+            backgroundColor: "#3b82f6",
+            borderRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false }
+          },
+          scales: {
+            y: { beginAtZero: true, ticks: { stepSize: 1, font: { family: "Inter" } }, grid: { color: "#f1f5f9" } },
+            x: { ticks: { font: { family: "Inter", size: 11 } }, grid: { display: false } }
+          }
+        }
+      });
+    }
+  } catch (e) {
+    console.warn("chart-devices-category error:", e);
   }
 }
 
@@ -1061,36 +1088,44 @@ function renderDepartmentChart() {
   const ctxDept = document.getElementById("chart-department-status");
   if (!ctxDept || typeof Chart === "undefined") return;
 
-  const matrix = state.analytics.department_status_matrix || {};
-  const labels = Object.keys(matrix);
-  const activeData = labels.map(l => (matrix[l] && matrix[l].Active) || 0);
-  const expiringData = labels.map(l => (matrix[l] && matrix[l]["Expiring Soon"]) || 0);
-  const expiredData = labels.map(l => (matrix[l] && matrix[l].Expired) || 0);
-
-  if (state.charts.departmentBar) state.charts.departmentBar.destroy();
-
-  state.charts.departmentBar = new Chart(ctxDept, {
-    type: "bar",
-    data: {
-      labels: labels,
-      datasets: [
-        { label: "Active", data: activeData, backgroundColor: "#10b981" },
-        { label: "Expiring Soon", data: expiringData, backgroundColor: "#f59e0b" },
-        { label: "Expired", data: expiredData, backgroundColor: "#ef4444" }
-      ]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      scales: {
-        x: { stacked: true, grid: { display: false } },
-        y: { stacked: true, grid: { color: "#f1f5f9" } }
-      },
-      plugins: {
-        legend: { position: "top", labels: { boxWidth: 12, font: { family: "Inter", size: 11 } } }
-      }
+  try {
+    const existing = Chart.getChart(ctxDept);
+    if (existing) existing.destroy();
+    if (state.charts.departmentBar) {
+      try { state.charts.departmentBar.destroy(); } catch(e){}
     }
-  });
+
+    const matrix = state.analytics.department_status_matrix || {};
+    const labels = Object.keys(matrix);
+    const activeData = labels.map(l => (matrix[l] && matrix[l].Active) || 0);
+    const expiringData = labels.map(l => (matrix[l] && matrix[l]["Expiring Soon"]) || 0);
+    const expiredData = labels.map(l => (matrix[l] && matrix[l].Expired) || 0);
+
+    state.charts.departmentBar = new Chart(ctxDept, {
+      type: "bar",
+      data: {
+        labels: labels,
+        datasets: [
+          { label: "Active", data: activeData, backgroundColor: "#10b981" },
+          { label: "Expiring Soon", data: expiringData, backgroundColor: "#f59e0b" },
+          { label: "Expired", data: expiredData, backgroundColor: "#ef4444" }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: { stacked: true, grid: { display: false } },
+          y: { stacked: true, grid: { color: "#f1f5f9" } }
+        },
+        plugins: {
+          legend: { position: "top", labels: { boxWidth: 12, font: { family: "Inter", size: 11 } } }
+        }
+      }
+    });
+  } catch (e) {
+    console.warn("renderDepartmentChart error:", e);
+  }
 }
 
 function triggerExport(format) {

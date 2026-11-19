@@ -246,10 +246,14 @@ def main():
         </style>
     """, unsafe_allow_html=True)
 
+    # Dynamically select component key to ensure seamless transition from login to dashboard
+    user_logged_in = bool(st.session_state.get("user"))
+    component_key = f"equipguard_component_{'app' if user_logged_in else 'login'}"
+
     # Mount and execute the custom HTML5 component
     component_event = equipguard_component(
         args=component_state,
-        key="equipguard_main_component",
+        key=component_key,
         default=None
     )
 
