@@ -60,6 +60,15 @@ def initialize_app_state():
         st.session_state["download_payload"] = None
         st.session_state["toast_message"] = None
 
+    # Restore session from query parameters if available (persists on browser refresh)
+    if st.session_state.get("user") is None:
+        session_token = st.query_params.get("session")
+        if session_token:
+            valid, restored_user = auth_service.verify_id_token(session_token)
+            if valid and restored_user:
+                st.session_state["user"] = restored_user
+                logger.info(f"Session restored for {restored_user.get('email')} via query params.")
+
 
 def handle_component_actions(component_event: dict):
     """Dispatches frontend events to backend business logic and services."""
@@ -86,6 +95,8 @@ def handle_component_actions(component_event: dict):
         if success and user_dict:
             st.session_state["user"] = user_dict
             st.session_state["auth_error"] = None
+            token = user_dict.get("id_token") or user_dict.get("uid") or "admin_master_secrets"
+            st.query_params["session"] = token
             excel_db.log_activity(email, "User Login", "AUTH", f"User authenticated via Firebase.")
             st.session_state["toast_message"] = ("success", f"Welcome back, {user_dict.get('display_name')}!")
             logger.info(f"User {email} successfully authenticated! Switching to dashboard.")
@@ -100,8 +111,21 @@ def handle_component_actions(component_event: dict):
         if st.session_state.get("user"):
             excel_db.log_activity(user_email, "User Logout", "AUTH", "User signed out.")
         st.session_state["user"] = None
+        if "session" in st.query_params:
+            del st.query_params["session"]
         st.session_state["toast_message"] = ("info", "Signed out successfully.")
         st.rerun()
+
+    # 2b. Restore Session Action (from frontend localStorage)
+    elif action == "restore_session":
+        token = payload.get("token")
+        if token and not st.session_state.get("user"):
+            valid, restored_user = auth_service.verify_id_token(token)
+            if valid and restored_user:
+                st.session_state["user"] = restored_user
+                st.query_params["session"] = token
+                logger.info(f"Restored session for {restored_user.get('email')} via component localStorage.")
+                st.rerun()
 
     # 3. Add Device Action
     elif action == "add_device":
@@ -179,6 +203,7 @@ def handle_component_actions(component_event: dict):
 
 
 def main():
+    logger.info("=== main() STARTED, user=%s ===", st.session_state.get("user"))
     initialize_app_state()
 
     # Prepare complete enriched state package for HTML frontend
@@ -246,16 +271,14 @@ def main():
         </style>
     """, unsafe_allow_html=True)
 
-    # Dynamically select component key to ensure seamless transition from login to dashboard
-    user_logged_in = bool(st.session_state.get("user"))
-    component_key = f"equipguard_component_{'app' if user_logged_in else 'login'}"
-
-    # Mount and execute the custom HTML5 component
+    # Mount and execute the custom HTML5 component with stable static key
+    logger.info("Calling equipguard_component with user=%s", component_state.get("user") is not None)
     component_event = equipguard_component(
         args=component_state,
-        key=component_key,
+        key="equipguard_component",
         default=None
     )
+    logger.info("equipguard_component returned: %s", component_event.get("action") if component_event else None)
 
     # Process user actions coming from the frontend
     if component_event:

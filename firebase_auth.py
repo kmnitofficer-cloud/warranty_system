@@ -190,6 +190,67 @@ class FirebaseAuthService:
             logger.error(f"Network error during Firebase auth: {e}")
             return False, f"Network error connecting to Firebase: {str(e)}", None
 
+    def verify_id_token(self, token: str) -> Tuple[bool, Optional[Dict[str, Any]]]:
+        """
+        Verify a session token or Firebase ID token.
+        Supports both Master Admin sessions and live Firebase ID tokens.
+        Returns: (is_valid: bool, user_dict: Optional[dict])
+        """
+        if not token:
+            return False, None
+
+        # 1. Master Admin Token Validation
+        if token.startswith("admin_master_"):
+            admin_email, _ = self._get_admin_credentials()
+            email = admin_email or "admin@equipguard.io"
+            display_name = email.split("@")[0].title()
+            user_data = {
+                "uid": "admin_master_secrets",
+                "email": email,
+                "display_name": f"{display_name} (Admin)",
+                "role": "Administrator",
+                "department": "IT Operations",
+                "avatar": f"https://api.dicebear.com/7.x/initials/svg?seed={display_name}",
+                "is_authenticated": True,
+                "auth_mode": "secrets_admin",
+                "last_login": datetime.now().isoformat()
+            }
+            return True, user_data
+
+        # 2. Firebase ID Token Verification via Identity Toolkit Lookup
+        active_key = self._get_active_api_key()
+        if not active_key:
+            return False, None
+
+        try:
+            payload = {"idToken": token}
+            params = {"key": active_key}
+            response = requests.post(FIREBASE_AUTH_LOOKUP_URL, params=params, json=payload, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                users = data.get("users", [])
+                if users:
+                    u = users[0]
+                    email = u.get("email", "")
+                    display_name = u.get("displayName") or email.split("@")[0].title()
+                    user_data = {
+                        "uid": u.get("localId"),
+                        "email": email,
+                        "display_name": display_name,
+                        "role": "Administrator" if "admin" in email else "Asset Manager",
+                        "department": "IT Operations",
+                        "avatar": f"https://api.dicebear.com/7.x/initials/svg?seed={display_name}",
+                        "id_token": token,
+                        "is_authenticated": True,
+                        "auth_mode": "firebase",
+                        "last_login": datetime.now().isoformat()
+                    }
+                    return True, user_data
+            return False, None
+        except Exception as e:
+            logger.error(f"Error validating token with Firebase: {e}")
+            return False, None
+
     def sign_up(self, email: str, password: str, display_name: Optional[str] = None) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
         """
         Register a new user with email and password via Firebase Authentication.

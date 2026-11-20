@@ -76,7 +76,11 @@ window.addEventListener("message", function(event) {
       clearInterval(window._readyPingInterval);
       window._readyPingInterval = null;
     }
-    const { args } = event.data;
+    let args = event.data.args;
+    // Unwrap nested args if passed as equipguard_component(args=...)
+    if (args && args.args) {
+      args = args.args;
+    }
     if (args) {
       handleBackendSync(args);
     }
@@ -108,12 +112,22 @@ setTimeout(() => {
 document.addEventListener("DOMContentLoaded", function() {
   initEventListeners();
   notifyFrameHeight();
+
+  // Check for persisted session in localStorage
+  try {
+    const savedToken = localStorage.getItem("equipguard_token");
+    if (savedToken && !state.user) {
+      sendToStreamlit("restore_session", { token: savedToken });
+    }
+  } catch(e) {}
+
   if (!state.user) {
     showLoginView();
   }
 });
 
-function handleBackendSync(args) {
+function handleBackendSync(rawArgs) {
+  const args = (rawArgs && rawArgs.args) ? rawArgs.args : (rawArgs || {});
   if (args.devices) {
     state.devices = args.devices;
   }
@@ -129,9 +143,18 @@ function handleBackendSync(args) {
 
   if (args.user) {
     state.user = args.user;
+    try {
+      localStorage.setItem("equipguard_token", args.user.id_token || args.user.uid || "admin_master_secrets");
+      localStorage.setItem("equipguard_user", JSON.stringify(args.user));
+    } catch(e) {}
     hideLoginAlert();
     showAppView();
-  } else if (!state.user) {
+  } else {
+    state.user = null;
+    try {
+      localStorage.removeItem("equipguard_token");
+      localStorage.removeItem("equipguard_user");
+    } catch(e) {}
     showLoginView();
   }
 
@@ -388,7 +411,10 @@ function handleLoginSubmit(e) {
 }
 
 function handleLogout() {
-  localStorage.removeItem("equipguard_user");
+  try {
+    localStorage.removeItem("equipguard_token");
+    localStorage.removeItem("equipguard_user");
+  } catch(e) {}
   state.user = null;
   sendToStreamlit("logout");
   showLoginView();
