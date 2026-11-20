@@ -99,7 +99,12 @@ def handle_component_actions(component_event: dict):
             st.session_state["is_logged_out"] = False
             token = user_dict.get("id_token") or user_dict.get("uid") or "admin_master_secrets"
             st.query_params["session"] = token
-            excel_db.log_activity(email, "User Login", "AUTH", f"User authenticated via {user_dict.get('auth_mode', 'Firebase')}.")
+            # Log activity asynchronously so login transition is instantaneous
+            import threading
+            threading.Thread(
+                target=lambda: excel_db.log_activity(email, "User Login", "AUTH", f"User authenticated via {user_dict.get('auth_mode', 'Firebase')}."),
+                daemon=True
+            ).start()
             st.session_state["toast_message"] = ("success", f"Welcome back, {user_dict.get('display_name')}!")
             logger.info(f"User {email} successfully authenticated! Switching to dashboard.")
         else:

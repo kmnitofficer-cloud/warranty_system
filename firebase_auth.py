@@ -29,14 +29,18 @@ class FirebaseAuthService:
         self.local_users_store = dict(config.DEMO_USERS)
 
     def _get_active_api_key(self) -> str:
-        """Dynamically retrieves the latest Firebase API key from Streamlit secrets, env, or TOML."""
+        """Dynamically retrieves the latest Firebase API key from Streamlit secrets, env, or config."""
         try:
             import streamlit as st
             if hasattr(st, "secrets") and st.secrets:
                 if "FIREBASE_WEB_API_KEY" in st.secrets:
-                    return str(st.secrets["FIREBASE_WEB_API_KEY"])
+                    val = str(st.secrets["FIREBASE_WEB_API_KEY"]).strip()
+                    if val and len(val) > 10 and not val.startswith("YOUR_"):
+                        return val
                 if "firebase" in st.secrets and "apiKey" in st.secrets["firebase"]:
-                    return str(st.secrets["firebase"]["apiKey"])
+                    val = str(st.secrets["firebase"]["apiKey"]).strip()
+                    if val and len(val) > 10 and not val.startswith("YOUR_"):
+                        return val
         except Exception:
             pass
 
@@ -52,13 +56,17 @@ class FirebaseAuthService:
                     with open(p, "rb") as f:
                         data = tomllib.load(f)
                         if "FIREBASE_WEB_API_KEY" in data:
-                            return str(data["FIREBASE_WEB_API_KEY"])
+                            val = str(data["FIREBASE_WEB_API_KEY"]).strip()
+                            if val and len(val) > 10 and not val.startswith("YOUR_"):
+                                return val
                         if "firebase" in data and "apiKey" in data["firebase"]:
-                            return str(data["firebase"]["apiKey"])
+                            val = str(data["firebase"]["apiKey"]).strip()
+                            if val and len(val) > 10 and not val.startswith("YOUR_"):
+                                return val
                 except Exception:
                     pass
 
-        return self.api_key or os.environ.get("FIREBASE_WEB_API_KEY") or config.FIREBASE_WEB_API_KEY or ""
+        return self.api_key or os.environ.get("FIREBASE_WEB_API_KEY") or config.FIREBASE_WEB_API_KEY or "AIzaSyDJxnSGZd0_9JrGCm6TtECPvZSCJqwqpB4"
 
     def _get_admin_credentials(self) -> Tuple[Optional[str], Optional[str]]:
         """Retrieves master administrator credentials from secrets.toml if configured."""
@@ -123,6 +131,7 @@ class FirebaseAuthService:
         # 1. Primary Authentication: Firebase Identity Toolkit REST API
         if active_key and len(active_key) > 10 and not active_key.startswith("YOUR_"):
             try:
+                logger.info(f"Firebase sign_in starting for {email} using API key prefix: {active_key[:8]}...")
                 payload = {
                     "email": email,
                     "password": password,
@@ -131,6 +140,7 @@ class FirebaseAuthService:
                 params = {"key": active_key}
                 response = requests.post(FIREBASE_AUTH_SIGNIN_URL, params=params, json=payload, timeout=10)
                 data = response.json()
+                logger.info(f"Firebase REST API response status: {response.status_code}")
 
                 if response.status_code == 200:
                     display_name = data.get("displayName") or email.split("@")[0].title()

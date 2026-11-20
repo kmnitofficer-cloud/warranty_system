@@ -37,19 +37,47 @@ GOOGLE_DRIVE_SCOPES = [
 
 def _load_secret(key: str, default: str = "") -> str:
     """Safely retrieves secrets from Streamlit secrets, environment variables, or secret.toml files."""
+    def _is_valid(val) -> bool:
+        if val is None:
+            return False
+        s = str(val).strip()
+        return len(s) > 0 and not s.startswith("YOUR_")
+
+    mapping = {
+        "FIREBASE_WEB_API_KEY": ["apiKey", "api_key", "FIREBASE_API_KEY"],
+        "FIREBASE_PROJECT_ID": ["projectId", "project_id"],
+        "FIREBASE_AUTH_DOMAIN": ["authDomain", "auth_domain"],
+        "FIREBASE_STORAGE_BUCKET": ["storageBucket", "storage_bucket"],
+        "FIREBASE_MESSAGING_SENDER_ID": ["messagingSenderId", "messaging_sender_id"],
+        "FIREBASE_APP_ID": ["appId", "app_id"],
+        "FIREBASE_MEASUREMENT_ID": ["measurementId", "measurement_id"],
+    }
+
     try:
         import streamlit as st
         if hasattr(st, "secrets") and st.secrets:
-            if key in st.secrets:
-                return str(st.secrets[key])
-            if "firebase" in st.secrets and isinstance(st.secrets["firebase"], dict) and key in st.secrets["firebase"]:
-                return str(st.secrets["firebase"][key])
+            if key in st.secrets and _is_valid(st.secrets[key]):
+                return str(st.secrets[key]).strip()
+            if "firebase" in st.secrets:
+                fb = st.secrets["firebase"]
+                if hasattr(fb, "get"):
+                    if key in fb and _is_valid(fb[key]):
+                        return str(fb[key]).strip()
+                    for alias in mapping.get(key, []):
+                        if alias in fb and _is_valid(fb[alias]):
+                            return str(fb[alias]).strip()
+            for alias in mapping.get(key, []):
+                if alias in st.secrets and _is_valid(st.secrets[alias]):
+                    return str(st.secrets[alias]).strip()
     except Exception:
         pass
 
     # Environment variables
-    if os.environ.get(key):
-        return os.environ.get(key)
+    if os.environ.get(key) and _is_valid(os.environ.get(key)):
+        return str(os.environ.get(key)).strip()
+    for alias in mapping.get(key, []):
+        if os.environ.get(alias) and _is_valid(os.environ.get(alias)):
+            return str(os.environ.get(alias)).strip()
 
     # Check local TOML files
     candidates = [
@@ -66,10 +94,18 @@ def _load_secret(key: str, default: str = "") -> str:
                 import tomllib
                 with open(p, "rb") as f:
                     data = tomllib.load(f)
-                    if key in data:
-                        return str(data[key])
-                    if "firebase" in data and isinstance(data["firebase"], dict) and key in data["firebase"]:
-                        return str(data["firebase"][key])
+                    if key in data and _is_valid(data[key]):
+                        return str(data[key]).strip()
+                    if "firebase" in data and isinstance(data["firebase"], dict):
+                        fb = data["firebase"]
+                        if key in fb and _is_valid(fb[key]):
+                            return str(fb[key]).strip()
+                        for alias in mapping.get(key, []):
+                            if alias in fb and _is_valid(fb[alias]):
+                                return str(fb[alias]).strip()
+                    for alias in mapping.get(key, []):
+                        if alias in data and _is_valid(data[alias]):
+                            return str(data[alias]).strip()
             except Exception:
                 pass
 
@@ -77,13 +113,13 @@ def _load_secret(key: str, default: str = "") -> str:
 
 
 # Firebase Configuration
-FIREBASE_WEB_API_KEY = _load_secret("FIREBASE_WEB_API_KEY", "")
-FIREBASE_AUTH_DOMAIN = _load_secret("FIREBASE_AUTH_DOMAIN", "kmn-it-warranty.firebaseapp.com")
-FIREBASE_PROJECT_ID = _load_secret("FIREBASE_PROJECT_ID", "kmn-it-warranty")
-FIREBASE_STORAGE_BUCKET = _load_secret("FIREBASE_STORAGE_BUCKET", "kmn-it-warranty.firebasestorage.app")
-FIREBASE_MESSAGING_SENDER_ID = _load_secret("FIREBASE_MESSAGING_SENDER_ID", "270307773370")
-FIREBASE_APP_ID = _load_secret("FIREBASE_APP_ID", "1:270307773370:web:dd7d54f4187e3b2b8cab83")
-FIREBASE_MEASUREMENT_ID = _load_secret("FIREBASE_MEASUREMENT_ID", "G-RNJ3CP4ECJ")
+FIREBASE_WEB_API_KEY = _load_secret("FIREBASE_WEB_API_KEY", "AIzaSyDJxnSGZd0_9JrGCm6TtECPvZSCJqwqpB4")
+FIREBASE_AUTH_DOMAIN = _load_secret("FIREBASE_AUTH_DOMAIN", "kmn-it-warranty-2d94c.firebaseapp.com")
+FIREBASE_PROJECT_ID = _load_secret("FIREBASE_PROJECT_ID", "kmn-it-warranty-2d94c")
+FIREBASE_STORAGE_BUCKET = _load_secret("FIREBASE_STORAGE_BUCKET", "kmn-it-warranty-2d94c.firebasestorage.app")
+FIREBASE_MESSAGING_SENDER_ID = _load_secret("FIREBASE_MESSAGING_SENDER_ID", "131012675015")
+FIREBASE_APP_ID = _load_secret("FIREBASE_APP_ID", "1:131012675015:web:57a73f89a58e3330b305e2")
+FIREBASE_MEASUREMENT_ID = _load_secret("FIREBASE_MEASUREMENT_ID", "G-V7WQEFKEHN")
 FIREBASE_SERVICE_ACCOUNT_FILE = CREDENTIALS_DIR / "firebase_admin.json"
 
 def get_firebase_config() -> dict:
