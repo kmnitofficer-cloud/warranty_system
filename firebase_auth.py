@@ -106,7 +106,8 @@ class FirebaseAuthService:
 
     def sign_in(self, email: str, password: str) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
         """
-        Authenticate user with email and password via Master Admin secrets or Firebase Authentication.
+        Authenticate user with email and password via Firebase Authentication (Primary).
+        Fallback to Master Admin secrets only if Firebase fails or is not configured.
         Strict verification: wrong passwords are NEVER accepted.
         Returns: (success: bool, message: str, user_dict: Optional[dict])
         """
@@ -116,79 +117,82 @@ class FirebaseAuthService:
         if not email or not password:
             return False, "Email and password are required.", None
 
-        # 1. Check Master Administrator credentials from secrets.toml
+        active_key = self._get_active_api_key()
+        firebase_error_msg = None
+
+        # 1. Primary Authentication: Firebase Identity Toolkit REST API
+        if active_key and len(active_key) > 10 and not active_key.startswith("YOUR_"):
+            try:
+                payload = {
+                    "email": email,
+                    "password": password,
+                    "returnSecureToken": True
+                }
+                params = {"key": active_key}
+                response = requests.post(FIREBASE_AUTH_SIGNIN_URL, params=params, json=payload, timeout=10)
+                data = response.json()
+
+                if response.status_code == 200:
+                    display_name = data.get("displayName") or email.split("@")[0].title()
+                    user_data = {
+                        "uid": data.get("localId"),
+                        "email": data.get("email", email),
+                        "display_name": display_name,
+                        "role": "Administrator" if "admin" in email else "Asset Manager",
+                        "department": "IT Operations",
+                        "avatar": f"https://api.dicebear.com/7.x/initials/svg?seed={display_name}",
+                        "id_token": data.get("idToken"),
+                        "refresh_token": data.get("refreshToken"),
+                        "expires_in": data.get("expiresIn"),
+                        "is_authenticated": True,
+                        "auth_mode": "firebase",
+                        "last_login": datetime.now().isoformat()
+                    }
+                    logger.info(f"User {email} successfully authenticated via Firebase Auth (UID: {data.get('localId')}).")
+                    return True, "Login successful via Firebase Authentication.", user_data
+                else:
+                    error_info = data.get("error", {})
+                    error_msg = error_info.get("message", "Authentication failed.")
+                    firebase_error_msg = self._translate_error(error_msg)
+                    logger.warning(f"Firebase auth failed for {email}: {error_msg} -> {firebase_error_msg}")
+
+            except requests.RequestException as e:
+                logger.error(f"Network error during Firebase auth: {e}")
+                firebase_error_msg = f"Network error connecting to Firebase: {str(e)}"
+
+        # 2. Fallback: Emergency Master Administrator from secrets.toml
         admin_email, admin_password = self._get_admin_credentials()
         accepted_passwords = set()
         if admin_password:
             accepted_passwords.add(admin_password)
-        accepted_passwords.add("AdminPassword2026!")
-        accepted_passwords.add("admin123")
 
         is_admin_email = False
         if admin_email and email == admin_email.strip().lower():
             is_admin_email = True
-        elif email == "admin@equipguard.io":
+        elif email == "admin@equipguard.io" and not active_key:
             is_admin_email = True
 
-        if is_admin_email:
-            if password in accepted_passwords:
-                display_name = email.split("@")[0].title()
-                user_data = {
-                    "uid": "admin_master_secrets",
-                    "email": email,
-                    "display_name": f"{display_name} (Admin)",
-                    "role": "Administrator",
-                    "department": "IT Operations",
-                    "avatar": f"https://api.dicebear.com/7.x/initials/svg?seed={display_name}",
-                    "is_authenticated": True,
-                    "auth_mode": "secrets_admin",
-                    "last_login": datetime.now().isoformat()
-                }
-                return True, "Login successful via Master Admin Credentials.", user_data
-            else:
-                return False, "Incorrect password for administrator account. Use 'admin123' or 'AdminPassword2026!' or your configured password in secrets.toml.", None
-
-        # 2. Check Firebase Authentication
-        active_key = self._get_active_api_key()
-        if not active_key or len(active_key) < 10 or active_key.startswith("YOUR_"):
-            return False, "Firebase Authentication is not configured. Please enable Firebase on project 'kmn-it-warranty-515108' or configure [admin] credentials in secrets.toml.", None
-
-        try:
-            payload = {
+        if is_admin_email and password in accepted_passwords:
+            display_name = email.split("@")[0].title()
+            user_data = {
+                "uid": "admin_master_secrets",
                 "email": email,
-                "password": password,
-                "returnSecureToken": True
+                "display_name": f"{display_name} (Admin)",
+                "role": "Administrator",
+                "department": "IT Operations",
+                "avatar": f"https://api.dicebear.com/7.x/initials/svg?seed={display_name}",
+                "is_authenticated": True,
+                "auth_mode": "secrets_admin",
+                "last_login": datetime.now().isoformat()
             }
-            params = {"key": active_key}
-            response = requests.post(FIREBASE_AUTH_SIGNIN_URL, params=params, json=payload, timeout=10)
-            data = response.json()
+            logger.info(f"User {email} authenticated via Master Admin fallback.")
+            return True, "Login successful via Master Admin Credentials.", user_data
 
-            if response.status_code == 200:
-                display_name = data.get("displayName") or email.split("@")[0].title()
-                user_data = {
-                    "uid": data.get("localId"),
-                    "email": data.get("email", email),
-                    "display_name": display_name,
-                    "role": "Administrator" if "admin" in email else "Asset Manager",
-                    "department": "IT Operations",
-                    "avatar": f"https://api.dicebear.com/7.x/initials/svg?seed={display_name}",
-                    "id_token": data.get("idToken"),
-                    "refresh_token": data.get("refreshToken"),
-                    "expires_in": data.get("expiresIn"),
-                    "is_authenticated": True,
-                    "auth_mode": "firebase",
-                    "last_login": datetime.now().isoformat()
-                }
-                return True, "Login successful via Firebase Authentication.", user_data
-            else:
-                error_info = data.get("error", {})
-                error_msg = error_info.get("message", "Authentication failed.")
-                friendly_msg = self._translate_error(error_msg)
-                return False, friendly_msg, None
+        # If Firebase gave a specific error, return it
+        if firebase_error_msg:
+            return False, firebase_error_msg, None
 
-        except requests.RequestException as e:
-            logger.error(f"Network error during Firebase auth: {e}")
-            return False, f"Network error connecting to Firebase: {str(e)}", None
+        return False, "Invalid email or password. Please verify your credentials or create the user in Firebase Console.", None
 
     def verify_id_token(self, token: str) -> Tuple[bool, Optional[Dict[str, Any]]]:
         """

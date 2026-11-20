@@ -39,9 +39,6 @@ function sendComponentReady() {
 }
 
 function sendToStreamlit(action, payload = {}) {
-  // Always ping componentReady before sending value to ensure handshake
-  sendComponentReady();
-
   const message = {
     isStreamlitMessage: true,
     type: "streamlit:setComponentValue",
@@ -334,6 +331,13 @@ function showLoginView() {
     const appView = document.getElementById("app-view");
     if (loginView) loginView.style.setProperty("display", "flex", "important");
     if (appView) appView.style.setProperty("display", "none", "important");
+    const pwdInput = document.getElementById("login-password");
+    if (pwdInput) pwdInput.value = "";
+    const submitBtn = document.getElementById("btn-login-submit");
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerText = "Sign In to Dashboard";
+    }
   } catch (e) {
     console.error("showLoginView error:", e);
   }
@@ -414,6 +418,8 @@ function handleLogout() {
   try {
     localStorage.removeItem("equipguard_token");
     localStorage.removeItem("equipguard_user");
+    localStorage.clear();
+    sessionStorage.clear();
   } catch(e) {}
   state.user = null;
   sendToStreamlit("logout");

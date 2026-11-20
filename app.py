@@ -59,9 +59,10 @@ def initialize_app_state():
         st.session_state["last_nonce"] = None
         st.session_state["download_payload"] = None
         st.session_state["toast_message"] = None
+        st.session_state["is_logged_out"] = False
 
     # Restore session from query parameters if available (persists on browser refresh)
-    if st.session_state.get("user") is None:
+    if st.session_state.get("user") is None and not st.session_state.get("is_logged_out", False):
         session_token = st.query_params.get("session")
         if session_token:
             valid, restored_user = auth_service.verify_id_token(session_token)
@@ -95,9 +96,10 @@ def handle_component_actions(component_event: dict):
         if success and user_dict:
             st.session_state["user"] = user_dict
             st.session_state["auth_error"] = None
+            st.session_state["is_logged_out"] = False
             token = user_dict.get("id_token") or user_dict.get("uid") or "admin_master_secrets"
             st.query_params["session"] = token
-            excel_db.log_activity(email, "User Login", "AUTH", f"User authenticated via Firebase.")
+            excel_db.log_activity(email, "User Login", "AUTH", f"User authenticated via {user_dict.get('auth_mode', 'Firebase')}.")
             st.session_state["toast_message"] = ("success", f"Welcome back, {user_dict.get('display_name')}!")
             logger.info(f"User {email} successfully authenticated! Switching to dashboard.")
         else:
@@ -108,21 +110,35 @@ def handle_component_actions(component_event: dict):
 
     # 2. Logout Action
     elif action == "logout":
-        if st.session_state.get("user"):
-            excel_db.log_activity(user_email, "User Logout", "AUTH", "User signed out.")
         st.session_state["user"] = None
-        if "session" in st.query_params:
-            del st.query_params["session"]
+        st.session_state["is_logged_out"] = True
+        try:
+            st.query_params.clear()
+        except Exception:
+            if "session" in st.query_params:
+                del st.query_params["session"]
         st.session_state["toast_message"] = ("info", "Signed out successfully.")
+
+        # Log activity asynchronously so logout renders instantaneously
+        if user_email:
+            import threading
+            threading.Thread(
+                target=lambda: excel_db.log_activity(user_email, "User Logout", "AUTH", "User signed out."),
+                daemon=True
+            ).start()
+
         st.rerun()
 
     # 2b. Restore Session Action (from frontend localStorage)
     elif action == "restore_session":
+        if st.session_state.get("is_logged_out", False):
+            return
         token = payload.get("token")
         if token and not st.session_state.get("user"):
             valid, restored_user = auth_service.verify_id_token(token)
             if valid and restored_user:
                 st.session_state["user"] = restored_user
+                st.session_state["is_logged_out"] = False
                 st.query_params["session"] = token
                 logger.info(f"Restored session for {restored_user.get('email')} via component localStorage.")
                 st.rerun()
