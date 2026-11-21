@@ -6,12 +6,12 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <title>EquipGuard - Device Warranty Management System</title>
-  <link rel="stylesheet" href="style.css?v=2.3.0">
+  <title>EquipGuard - Enterprise Warranty & Asset Management</title>
+  <link rel="stylesheet" href="style.css?v=2.4.0">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <!-- Chart.js for interactive analytics -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Chart.js for analytics -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
@@ -26,12 +26,12 @@
     <div class="login-card">
       <div class="login-header">
         <svg class="login-logo" viewBox="0 0 48 48" fill="none">
-          <rect width="48" height="48" rx="12" fill="#2563EB"/>
-          <path d="M24 10L14 14.5V23C14 29.5 18.25 35.5 24 37C29.75 35.5 34 29.5 34 23V14.5L24 10Z" fill="white" fill-opacity="0.15" stroke="white" stroke-width="2.5" stroke-linejoin="round"/>
+          <rect width="48" height="48" rx="14" fill="#2563EB"/>
+          <path d="M24 11L14 15.5V23.5C14 29.8 18.25 35.8 24 37.3C29.75 35.8 34 29.8 34 23.5V15.5L24 11Z" fill="white" fill-opacity="0.15" stroke="white" stroke-width="2.5" stroke-linejoin="round"/>
           <path d="M20 23.5L23 26.5L28.5 20.5" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
         <h1 class="login-title">EquipGuard</h1>
-        <p class="login-subtitle">Enterprise Device Warranty & Asset Management</p>
+        <p class="login-subtitle">Enterprise Device Warranty & Asset Intelligence</p>
       </div>
 
       <div id="login-alert" class="alert-box alert-danger" style="display: none; margin-bottom: 16px;"></div>
@@ -39,7 +39,7 @@
       <form id="login-form">
         <div class="form-group" style="margin-bottom: 16px;">
           <label class="form-label" for="login-email">Work Email Address <span class="required">*</span></label>
-          <input type="email" id="login-email" class="form-control" placeholder="name@company.com" required autocomplete="email">
+          <input type="email" id="login-email" class="form-control" placeholder="admin@equipguard.io" required autocomplete="email">
         </div>
 
         <div class="form-group" style="margin-bottom: 20px;">
@@ -47,16 +47,16 @@
           <input type="password" id="login-password" class="form-control" placeholder="••••••••" required autocomplete="current-password">
         </div>
 
-        <button type="submit" id="btn-login-submit" class="btn-primary" style="width: 100%; justify-content: center; padding: 11px;">
-          Sign In to Dashboard
+        <button type="submit" id="btn-login-submit" class="btn-primary" style="width: 100%; justify-content: center; padding: 12px;">
+          <span>Sign In to Dashboard</span>
+          <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
         </button>
       </form>
 
-      <!-- Cloud Connected Notice -->
-      <div class="demo-credentials-box" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-top: 20px;">
-        <div style="font-size: 12px; color: var(--text-muted); text-align: center;">
-          🔒 Secured with <strong>Firebase Authentication</strong><br>
-          <span style="font-size: 11px;">Sign in with your registered account in Firebase Console or credentials in secrets.toml.</span>
+      <div style="background: var(--bg-card-subtle); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 12px; margin-top: 24px; text-align: center;">
+        <div style="font-size: 12px; color: var(--text-muted); display: flex; align-items: center; justify-content: center; gap: 6px;">
+          <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+          <span>Secured with <strong>Firebase Authentication</strong> & Cloud Sync</span>
         </div>
       </div>
     </div>
@@ -68,43 +68,66 @@
   <div id="app-view" style="display: none; width: 100%;">
     <div id="app-container">
 
-      <!-- Dark Navy Sidebar -->
-      <aside class="sidebar">
+      <!-- Collapsible Glassy Dark Sidebar -->
+      <aside id="main-sidebar" class="sidebar">
         <div class="sidebar-header">
-          <div class="sidebar-logo">EG</div>
-          <div class="sidebar-title">
-            <h1>EquipGuard</h1>
-            <p>Warranty Center</p>
+          <div class="brand-wrapper">
+            <div class="sidebar-logo">
+              <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+              </svg>
+            </div>
+            <div class="sidebar-title">
+              <h1>EquipGuard</h1>
+              <p>Warranty Center</p>
+            </div>
           </div>
+          <button type="button" id="btn-toggle-sidebar" class="sidebar-toggle-btn" title="Toggle Sidebar (Collapse / Expand)">
+            <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7"/>
+            </svg>
+          </button>
         </div>
 
         <nav class="sidebar-nav">
           <div class="nav-section-title">Main Menu</div>
-          <div class="nav-item active" data-tab="dashboard">
-            <span class="nav-icon">📊</span>
-            <span>Dashboard</span>
+          <div class="nav-item active" data-tab="dashboard" title="Dashboard">
+            <span class="nav-icon">
+              <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+            </span>
+            <span class="nav-label">Dashboard</span>
           </div>
-          <div class="nav-item" data-tab="devices">
-            <span class="nav-icon">💻</span>
-            <span>Device Inventory</span>
+          <div class="nav-item" data-tab="devices" title="Device Inventory">
+            <span class="nav-icon">
+              <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+            </span>
+            <span class="nav-label">Device Inventory</span>
           </div>
-          <div class="nav-item" data-tab="warranties">
-            <span class="nav-icon">🛡️</span>
-            <span>Warranty Center</span>
+          <div class="nav-item" data-tab="warranties" title="Warranty Center">
+            <span class="nav-icon">
+              <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+            </span>
+            <span class="nav-label">Warranty Center</span>
             <span id="sidebar-expiring-badge" class="nav-badge" style="display: none;">0</span>
           </div>
-          <div class="nav-item" data-tab="reports">
-            <span class="nav-icon">📈</span>
-            <span>Reports & Analytics</span>
+          <div class="nav-item" data-tab="reports" title="Reports & Analytics">
+            <span class="nav-icon">
+              <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+            </span>
+            <span class="nav-label">Reports & Analytics</span>
           </div>
         </nav>
 
+        <!-- Sidebar Footer with User Profile and Live Online Dot -->
         <div class="sidebar-footer">
           <div class="user-profile-widget">
-            <img id="sidebar-user-avatar" class="user-avatar" src="" alt="User">
+            <div class="avatar-container">
+              <img id="sidebar-user-avatar" class="user-avatar" src="" alt="User">
+              <span class="status-dot-online" title="Authenticated & Online"></span>
+            </div>
             <div class="user-info">
-              <div id="sidebar-user-name" class="user-name">Loading...</div>
-              <div id="sidebar-user-role" class="user-role">Administrator</div>
+              <div id="sidebar-user-name" class="user-name">Administrator</div>
+              <div id="sidebar-user-role" class="user-role">IT Operations</div>
             </div>
             <button class="btn-logout" id="btn-logout" title="Sign Out">
               <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
@@ -116,48 +139,69 @@
       <!-- Main Workspace -->
       <main class="main-content">
 
-        <!-- Top Header Navigation -->
+        <!-- Top Header Navigation (Sticky, Translucent Blur) -->
         <header class="top-header">
           <div class="header-left">
             <div class="search-container">
-              <svg class="search-icon" width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+              <svg class="search-icon" width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+              </svg>
               <input type="text" id="global-search-input" class="search-input" placeholder="Search devices by serial #, name, or model...">
+              <kbd class="search-kbd">Ctrl K</kbd>
+
+              <!-- Live Search Quick Results Dropdown -->
+              <div id="search-results-dropdown" class="search-results-dropdown"></div>
             </div>
           </div>
 
           <div class="header-right">
-            <!-- Google Drive Cloud Sync Status Pill -->
-            <div id="cloud-sync-pill" class="sync-status-pill" title="Database status">
+            <!-- Google Drive Cloud Sync Pill -->
+            <div id="cloud-sync-pill" class="sync-status-pill" title="Live Google Drive Database Status">
               <span class="status-indicator-dot"></span>
-              <span id="cloud-sync-text">Local Storage</span>
+              <span id="cloud-sync-text">Google Drive Synced</span>
             </div>
 
-            <!-- Browser Notifications Toggle -->
-            <button type="button" id="btn-browser-notif" class="header-btn-icon" title="Enable Desktop Browser Notifications">
-              🔔
+            <!-- Light / Dark Mode Toggle -->
+            <button type="button" id="btn-theme-toggle" class="header-btn-icon" title="Toggle Light/Dark Theme">
+              <svg id="theme-icon-sun" width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
+              </svg>
+              <svg id="theme-icon-moon" style="display: none;" width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
+              </svg>
             </button>
 
             <!-- Notifications Drawer Bell -->
             <div style="position: relative;">
-              <button type="button" id="btn-notification-bell" class="header-btn-icon" title="View Notifications">
-                <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+              <button type="button" id="btn-notification-bell" class="header-btn-icon" title="Notifications & Alerts">
+                <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+                </svg>
                 <span id="notif-count-badge" class="notif-badge-pill" style="display: none;">0</span>
               </button>
 
               <!-- Notifications Dropdown / Drawer -->
               <div id="notification-drawer" class="notification-drawer">
                 <div class="notif-header">
-                  <span class="notif-title">Warranty Notifications</span>
+                  <span class="notif-title">Warranty Alerts</span>
                   <button type="button" id="btn-mark-all-read" class="notif-mark-all-btn">Mark all read</button>
                 </div>
                 <div id="notif-items-list" class="notif-list">
-                  <div style="padding: 24px; text-align: center; color: var(--text-muted); font-size: 13px;">No new notifications.</div>
+                  <div style="padding: 24px; text-align: center; color: var(--text-muted); font-size: 13px;">No unread notifications.</div>
                 </div>
               </div>
             </div>
 
+            <!-- Export Reports Dropdown -->
+            <div style="position: relative;">
+              <button type="button" id="btn-header-export" class="btn-secondary" title="Export Inventory & Warranty Reports">
+                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                <span>Export</span>
+              </button>
+            </div>
+
             <!-- "+ Add Device" Button -->
-            <button type="button" id="btn-header-add-device" class="btn-primary">
+            <button type="button" id="btn-header-add-device" class="btn-primary" onclick="openAddDeviceModal()">
               <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
               <span>Add Device</span>
             </button>
@@ -167,69 +211,142 @@
         <!-- Dynamic Page Content -->
         <div class="page-body">
 
-          <!-- TAB 1: DASHBOARD -->
+          <!-- Action Required Alert Banner -->
+          <div id="action-alert-banner" class="action-alert-banner" style="display: none;">
+            <div class="action-alert-left">
+              <svg class="alert-pulse-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+              </svg>
+              <span id="action-alert-text" class="action-alert-text">3 warranties expired, 1 expiring soon</span>
+            </div>
+            <div class="action-alert-right">
+              <button type="button" class="btn-review-now" onclick="switchTab('warranties')">Review Now</button>
+              <button type="button" class="btn-dismiss-alert" onclick="dismissActionAlert()" title="Dismiss">&times;</button>
+            </div>
+          </div>
+
+          <!-- TAB 1: EXECUTIVE DASHBOARD -->
           <section id="tab-dashboard" class="tab-content">
             <div class="page-header">
-              <h2 class="page-title">Executive Dashboard</h2>
-              <p class="page-subtitle">Real-time warranty status distribution, upcoming expirations, and recent audit activity.</p>
+              <div class="page-title-row">
+                <div>
+                  <h2 class="page-title">Executive Dashboard</h2>
+                  <p class="page-subtitle">Real-time warranty status distribution, upcoming expirations, and recent audit activity.</p>
+                </div>
+
+                <!-- Warranty Health Score Gauge Pill -->
+                <div id="fleet-health-score-card" style="display: flex; align-items: center; gap: 14px; background: var(--bg-card); border: 1px solid var(--border-subtle); padding: 8px 18px; border-radius: var(--radius-card); box-shadow: var(--shadow-sm);">
+                  <div style="position: relative; width: 44px; height: 44px;">
+                    <svg width="44" height="44" viewBox="0 0 36 36" style="transform: rotate(-90deg);">
+                      <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="var(--bg-card-subtle)" stroke-width="3.5" />
+                      <path id="health-score-circle" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#10B981" stroke-width="3.5" stroke-dasharray="100, 100" stroke-dashoffset="25" stroke-linecap="round" style="transition: stroke-dashoffset 800ms ease;" />
+                    </svg>
+                    <div id="health-score-label" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: var(--text-primary);">75%</div>
+                  </div>
+                  <div>
+                    <div style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em;">Fleet Health Score</div>
+                    <div id="health-score-status" style="font-size: 13.5px; font-weight: 700; color: #10B981;">Good Condition</div>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            <!-- 5 Summary KPI Cards -->
+            <!-- 5 Summary KPI Cards with Sparklines -->
             <div class="metrics-grid">
+              <!-- KPI 1: Total Devices -->
               <div class="metric-card">
                 <div class="metric-card-top">
                   <span class="metric-label">Total Devices</span>
-                  <div class="metric-icon-box metric-icon-blue">💻</div>
+                  <div class="metric-icon-box metric-icon-blue">
+                    <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                  </div>
                 </div>
-                <div id="metric-total-devices" class="metric-value">0</div>
+                <div class="metric-middle">
+                  <div id="metric-total-devices" class="metric-value">0</div>
+                  <svg class="metric-sparkline" viewBox="0 0 80 30" fill="none">
+                    <path d="M2 24 Q 20 8, 40 16 T 78 6" stroke="#2563EB" stroke-width="2.5" stroke-linecap="round"/>
+                  </svg>
+                </div>
                 <div class="metric-meta">Across 9 office categories</div>
               </div>
 
+              <!-- KPI 2: Active Warranties -->
               <div class="metric-card">
                 <div class="metric-card-top">
                   <span class="metric-label">Active Warranties</span>
-                  <div class="metric-icon-box metric-icon-green">🛡️</div>
+                  <div class="metric-icon-box metric-icon-green">
+                    <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                  </div>
                 </div>
-                <div id="metric-active-warranties" class="metric-value">0</div>
-                <div id="metric-active-percent" class="metric-meta metric-trend-up">0% covered</div>
+                <div class="metric-middle">
+                  <div id="metric-active-warranties" class="metric-value">0</div>
+                  <svg class="metric-sparkline" viewBox="0 0 80 30" fill="none">
+                    <path d="M2 22 Q 22 24, 42 12 T 78 4" stroke="#10B981" stroke-width="2.5" stroke-linecap="round"/>
+                  </svg>
+                </div>
+                <div id="metric-active-percent" class="metric-meta metric-trend-up">0% active coverage</div>
               </div>
 
+              <!-- KPI 3: Expiring Soon (Amber Accent Top) -->
               <div class="metric-card metric-card-expiring">
                 <div class="metric-card-top">
                   <span class="metric-label">Expiring Soon</span>
-                  <div class="metric-icon-box metric-icon-amber">⚠️</div>
+                  <div class="metric-icon-box metric-icon-amber">
+                    <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                  </div>
                 </div>
-                <div id="metric-expiring-soon" class="metric-value" style="color: var(--warning);">0</div>
+                <div class="metric-middle">
+                  <div id="metric-expiring-soon" class="metric-value" style="color: var(--warning);">0</div>
+                  <svg class="metric-sparkline" viewBox="0 0 80 30" fill="none">
+                    <path d="M2 8 Q 20 22, 44 14 T 78 18" stroke="#F59E0B" stroke-width="2.5" stroke-linecap="round"/>
+                  </svg>
+                </div>
                 <div class="metric-meta">Within next 30 days</div>
               </div>
 
+              <!-- KPI 4: Expired Warranties (Red Accent Top) -->
               <div class="metric-card metric-card-expired">
                 <div class="metric-card-top">
                   <span class="metric-label">Expired Warranties</span>
-                  <div class="metric-icon-box metric-icon-red">🛑</div>
+                  <div class="metric-icon-box metric-icon-red">
+                    <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>
+                  </div>
                 </div>
-                <div id="metric-expired-warranties" class="metric-value" style="color: var(--danger);">0</div>
+                <div class="metric-middle">
+                  <div id="metric-expired-warranties" class="metric-value" style="color: var(--danger);">0</div>
+                  <svg class="metric-sparkline" viewBox="0 0 80 30" fill="none">
+                    <path d="M2 18 Q 22 10, 48 20 T 78 24" stroke="#EF4444" stroke-width="2.5" stroke-linecap="round"/>
+                  </svg>
+                </div>
                 <div class="metric-meta">Renewal required</div>
               </div>
 
+              <!-- KPI 5: Warranty Alerts -->
               <div class="metric-card">
                 <div class="metric-card-top">
                   <span class="metric-label">Warranty Alerts</span>
-                  <div class="metric-icon-box metric-icon-purple">🔔</div>
+                  <div class="metric-icon-box metric-icon-purple">
+                    <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+                  </div>
                 </div>
-                <div id="metric-unread-notifs" class="metric-value">0</div>
+                <div class="metric-middle">
+                  <div id="metric-unread-notifs" class="metric-value">0</div>
+                  <svg class="metric-sparkline" viewBox="0 0 80 30" fill="none">
+                    <path d="M2 14 Q 26 6, 50 20 T 78 8" stroke="#8B5CF6" stroke-width="2.5" stroke-linecap="round"/>
+                  </svg>
+                </div>
                 <div class="metric-meta">Unread notifications</div>
               </div>
             </div>
 
             <!-- Charts & Visual Analytics Grid -->
             <div class="dashboard-split-grid">
-              <!-- Chart 1: Warranty Status Distribution -->
+              <!-- Chart 1: Donut with Centered Total -->
               <div class="card">
                 <div class="card-header">
                   <div>
                     <h3 class="card-title">Warranty Status Distribution</h3>
-                    <p class="card-subtitle">Active, Expiring Soon (≤30d), and Expired</p>
+                    <p class="card-subtitle">Active, Expiring Soon (≤30d), and Expired breakdown</p>
                   </div>
                 </div>
                 <div class="card-body">
@@ -239,7 +356,7 @@
                 </div>
               </div>
 
-              <!-- Chart 2: Devices by Category -->
+              <!-- Chart 2: Gradient Bar Chart -->
               <div class="card">
                 <div class="card-header">
                   <div>
@@ -257,23 +374,28 @@
 
             <!-- Split Grid 2: Upcoming Expirations & System Activity -->
             <div class="dashboard-split-grid">
-              <!-- Upcoming Expirations -->
+              <!-- Upcoming Expirations with Urgency Progress Bar -->
               <div class="card">
                 <div class="card-header">
                   <div>
                     <h3 class="card-title">Upcoming Warranty Expirations</h3>
                     <p class="card-subtitle">Urgent equipment requiring immediate renewal</p>
                   </div>
-                  <button type="button" class="btn-secondary" style="padding: 4px 10px; font-size: 12px;" onclick="switchTab('warranties')">View All</button>
+                  <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+                    <button type="button" class="btn-secondary upcoming-filter-btn active" data-filter="all" style="padding: 3px 8px; font-size: 11px;">All</button>
+                    <button type="button" class="btn-secondary upcoming-filter-btn" data-filter="soon" style="padding: 3px 8px; font-size: 11px;">Expiring</button>
+                    <button type="button" class="btn-secondary upcoming-filter-btn" data-filter="expired" style="padding: 3px 8px; font-size: 11px;">Expired</button>
+                    <button type="button" class="btn-secondary" style="padding: 3px 10px; font-size: 11px; margin-left: 2px;" onclick="switchTab('warranties')">View All</button>
+                  </div>
                 </div>
                 <div class="card-body" style="padding: 16px;">
                   <div id="upcoming-expirations-list" class="expiring-list">
-                    <!-- Populated dynamically -->
+                    <!-- Populated dynamically with progress bars -->
                   </div>
                 </div>
               </div>
 
-              <!-- Recent Activity & Recently Added -->
+              <!-- Recent Activity Connected Timeline -->
               <div class="card">
                 <div class="card-header">
                   <div>
@@ -292,13 +414,14 @@
 
           <!-- TAB 2: DEVICE INVENTORY MANAGEMENT -->
           <section id="tab-devices" class="tab-content" style="display: none;">
-            <div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-end;">
+            <div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 16px;">
               <div>
                 <h2 class="page-title">Device Inventory</h2>
-                <p class="page-subtitle">Add, edit, inspect, and manage enterprise devices and assigned users.</p>
+                <p class="page-subtitle">Add, edit, inspect, and manage enterprise hardware devices and warranties.</p>
               </div>
               <button type="button" class="btn-primary" onclick="openAddDeviceModal()">
-                + Register New Device
+                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                <span>Register New Device</span>
               </button>
             </div>
 
@@ -340,7 +463,7 @@
               </div>
 
               <div style="font-size: 13px; color: var(--text-muted);">
-                Showing <span id="devices-count-label" style="font-weight: 600; color: var(--text-main);">0</span> devices
+                Showing <span id="devices-count-label" style="font-weight: 600; color: var(--text-primary);">0</span> devices
               </div>
             </div>
 
@@ -405,17 +528,19 @@
 
           <!-- TAB 4: REPORTS & ANALYTICS -->
           <section id="tab-reports" class="tab-content" style="display: none;">
-            <div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-end;">
+            <div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 16px;">
               <div>
                 <h2 class="page-title">Reports & Audit Analytics</h2>
                 <p class="page-subtitle">Export compliance audits, horizon analyses, and inventory spreadsheets.</p>
               </div>
               <div style="display: flex; gap: 10px;">
                 <button type="button" id="btn-export-excel" class="btn-secondary">
-                  📊 Export to Excel (.xlsx)
+                  <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                  <span>Export to Excel (.xlsx)</span>
                 </button>
                 <button type="button" id="btn-export-pdf" class="btn-primary">
-                  📑 Export Audit Report (.pdf)
+                  <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                  <span>Export Audit Report (.pdf)</span>
                 </button>
               </div>
             </div>
@@ -464,9 +589,9 @@
                 <div class="card-body" style="padding: 24px;">
                   <div style="margin-bottom: 20px;">
                     <div style="font-size: 13px; color: var(--text-muted);">Total Monitored Asset Value</div>
-                    <div id="report-total-asset-val" style="font-size: 32px; font-weight: 700; color: var(--primary);">$0.00</div>
+                    <div id="report-total-asset-val" style="font-size: 36px; font-weight: 800; color: var(--primary);">$0.00</div>
                   </div>
-                  <div style="font-size: 13px; line-height: 1.6; color: var(--text-muted);">
+                  <div style="font-size: 13.5px; line-height: 1.6; color: var(--text-muted);">
                     All reports are formatted according to enterprise audit standards with date-stamped compliance logs, active warranty percentages, and serialized hardware verification.
                   </div>
                 </div>
@@ -480,7 +605,7 @@
   </div>
 
   <!-- =========================================================================
-       MODAL 1: ADD / EDIT DEVICE MODAL (All 17 fields)
+       MODAL 1: ADD / EDIT DEVICE MODAL (All 17 fields preserved)
        ========================================================================= -->
   <div id="device-modal" class="modal-backdrop">
     <div class="modal-dialog">
@@ -649,6 +774,6 @@
   </div>
 
   <!-- Main JavaScript App Logic -->
-  <script src="script.js?v=2.3.0"></script>
+  <script src="script.js?v=2.4.0"></script>
 </body>
 </html>

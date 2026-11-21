@@ -1,9 +1,13 @@
 /**
- * EquipGuard - Device Warranty Management & Notification System
- * Modern SaaS Frontend Logic, Chart.js Visualizations, and Streamlit Bridge
+ * EquipGuard - Enterprise Device Warranty & Asset Intelligence
+ * Premium SaaS Frontend Logic, Modern Visualizations, and Streamlit Bridge
+ * Designed to Linear, Stripe & Vercel design aesthetics.
  */
 
-// Global State
+// =========================================================================
+// Global Application State
+// =========================================================================
+
 const state = {
   authenticated: false,
   user: null,
@@ -17,7 +21,8 @@ const state = {
     department: "all",
     status: "all",
     search: "",
-    warrantyHorizon: "all"
+    warrantyHorizon: "all",
+    upcomingFilter: "all"
   },
   charts: {
     statusDoughnut: null,
@@ -26,7 +31,9 @@ const state = {
   },
   lastSeenToastId: null,
   autoLoginAttempted: false,
-  isStreamlitConnected: false
+  isStreamlitConnected: false,
+  theme: "light",
+  sidebarCollapsed: false
 };
 
 // =========================================================================
@@ -59,7 +66,7 @@ function notifyFrameHeight() {
   }, "*");
 }
 
-// Listen for incoming state from Streamlit backend
+// Listen for incoming state updates from Streamlit Python backend
 window.addEventListener("message", function(event) {
   if (!event.data) return;
   if (event.data.type === "streamlit:render") {
@@ -80,12 +87,18 @@ window.addEventListener("load", function() {
 });
 
 document.addEventListener("DOMContentLoaded", function() {
+  initTheme();
+  initSidebar();
   initEventListeners();
   notifyFrameHeight();
   if (!state.authenticated && !state.user) {
     showLoginView();
   }
 });
+
+// =========================================================================
+// State Synchronization & Rendering Engine
+// =========================================================================
 
 function applyServerState(serverState) {
   if (!serverState) return;
@@ -114,7 +127,7 @@ function applyServerState(serverState) {
     const submitBtn = document.getElementById("btn-login-submit");
     if (submitBtn) {
       submitBtn.disabled = false;
-      submitBtn.innerText = "Sign In to Dashboard";
+      submitBtn.innerHTML = `<span>Sign In to Dashboard</span><svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>`;
     }
   } else {
     hideLoginAlert();
@@ -148,7 +161,7 @@ function applyServerState(serverState) {
         const submitBtn = document.getElementById("btn-login-submit");
         if (submitBtn) {
           submitBtn.disabled = true;
-          submitBtn.innerText = "Restoring session...";
+          submitBtn.innerHTML = `<span>Restoring session...</span>`;
         }
         sendToStreamlit("login", { idToken: savedToken });
         return;
@@ -156,7 +169,7 @@ function applyServerState(serverState) {
     } catch(e) {}
   }
 
-  // Render proper view
+  // Render proper view based on authentication status
   if (state.authenticated && state.user) {
     showAppView();
     updateUserInfoUI();
@@ -174,10 +187,142 @@ function applyServerState(serverState) {
 }
 
 // =========================================================================
+// Theme Management (Light & Dark Mode)
+// =========================================================================
+
+function initTheme() {
+  let savedTheme = null;
+  try {
+    savedTheme = localStorage.getItem("equipguard_theme");
+  } catch(e) {}
+
+  if (!savedTheme) {
+    const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+    savedTheme = prefersDark ? "dark" : "light";
+  }
+
+  setTheme(savedTheme, false);
+}
+
+function setTheme(theme, rerenderCharts = true) {
+  state.theme = theme;
+  const isDark = theme === "dark";
+
+  if (isDark) {
+    document.documentElement.classList.add("dark-mode");
+    document.body.classList.add("dark-mode");
+  } else {
+    document.documentElement.classList.remove("dark-mode");
+    document.body.classList.remove("dark-mode");
+  }
+
+  try {
+    localStorage.setItem("equipguard_theme", theme);
+  } catch(e) {}
+
+  // Update theme icons
+  const iconSun = document.getElementById("theme-icon-sun");
+  const iconMoon = document.getElementById("theme-icon-moon");
+  if (iconSun && iconMoon) {
+    if (isDark) {
+      iconSun.style.display = "none";
+      iconMoon.style.display = "block";
+    } else {
+      iconSun.style.display = "block";
+      iconMoon.style.display = "none";
+    }
+  }
+
+  // Re-render charts to adapt colors
+  if (rerenderCharts && state.authenticated) {
+    try { renderDashboardCharts(); } catch(e) {}
+    try { renderDepartmentChart(); } catch(e) {}
+  }
+}
+
+function toggleTheme() {
+  const newTheme = state.theme === "dark" ? "light" : "dark";
+  setTheme(newTheme, true);
+  showToast(`Switched to ${newTheme} mode`, "info");
+}
+
+// =========================================================================
+// Collapsible Sidebar Management
+// =========================================================================
+
+function initSidebar() {
+  let saved = null;
+  try {
+    saved = localStorage.getItem("equipguard_sidebar_collapsed");
+  } catch(e) {}
+
+  if (saved === "true") {
+    state.sidebarCollapsed = true;
+    const sidebar = document.getElementById("main-sidebar");
+    if (sidebar) sidebar.classList.add("collapsed");
+  }
+}
+
+function toggleSidebar() {
+  state.sidebarCollapsed = !state.sidebarCollapsed;
+  const sidebar = document.getElementById("main-sidebar");
+  if (sidebar) {
+    sidebar.classList.toggle("collapsed", state.sidebarCollapsed);
+  }
+  try {
+    localStorage.setItem("equipguard_sidebar_collapsed", state.sidebarCollapsed ? "true" : "false");
+  } catch(e) {}
+  notifyFrameHeight();
+}
+
+// =========================================================================
+// Animated Count-Up for Metric Numbers
+// =========================================================================
+
+function animateCountUp(elementId, targetValue, duration = 600) {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+
+  const target = Number(targetValue) || 0;
+  const start = 0;
+  const startTime = performance.now();
+
+  function updateCount(currentTime) {
+    const elapsed = currentTime - startTime;
+    const progress = Math.min(elapsed / duration, 1);
+    // Ease-out cubic
+    const ease = 1 - Math.pow(1 - progress, 3);
+    const current = Math.floor(start + (target - start) * ease);
+
+    el.innerText = current.toLocaleString();
+
+    if (progress < 1) {
+      requestAnimationFrame(updateCount);
+    } else {
+      el.innerText = target.toLocaleString();
+    }
+  }
+
+  requestAnimationFrame(updateCount);
+}
+
+// =========================================================================
 // Event Listeners Setup
 // =========================================================================
 
 function initEventListeners() {
+  // Theme Toggle Button
+  const themeToggleBtn = document.getElementById("btn-theme-toggle");
+  if (themeToggleBtn) {
+    themeToggleBtn.addEventListener("click", toggleTheme);
+  }
+
+  // Sidebar Collapse Button
+  const sidebarToggleBtn = document.getElementById("btn-toggle-sidebar");
+  if (sidebarToggleBtn) {
+    sidebarToggleBtn.addEventListener("click", toggleSidebar);
+  }
+
   // Login Form Submission
   const loginForm = document.getElementById("login-form");
   if (loginForm) {
@@ -198,18 +343,68 @@ function initEventListeners() {
     });
   });
 
-  // Global Search Input
+  // Global Search Input with Ctrl+K shortcut
   const searchInput = document.getElementById("global-search-input");
+  const searchDropdown = document.getElementById("search-results-dropdown");
+
   if (searchInput) {
     searchInput.addEventListener("input", (e) => {
-      state.filters.search = e.target.value;
-      if (state.activeTab !== "devices" && state.activeTab !== "warranties") {
-        switchTab("devices");
+      const query = e.target.value.trim();
+      state.filters.search = query;
+      handleGlobalSearchInput(query);
+    });
+
+    searchInput.addEventListener("focus", (e) => {
+      if (e.target.value.trim()) {
+        handleGlobalSearchInput(e.target.value.trim());
       }
-      renderDevicesTable();
-      renderWarrantiesTable();
     });
   }
+
+  // Close search dropdown on click outside
+  document.addEventListener("click", (e) => {
+    if (searchDropdown && !searchDropdown.contains(e.target) && e.target !== searchInput) {
+      searchDropdown.classList.remove("show");
+    }
+  });
+
+  // Close modals when clicking directly on backdrop
+  document.querySelectorAll(".modal-backdrop").forEach(backdrop => {
+    backdrop.addEventListener("click", (e) => {
+      if (e.target === backdrop) {
+        closeDeviceModal();
+        closeDeviceDetailsModal();
+      }
+    });
+  });
+
+  // Window resize handler to maintain accurate frame height
+  window.addEventListener("resize", () => {
+    notifyFrameHeight();
+  });
+
+  // Keyboard shortcut: Ctrl+K or / to focus search, Escape to close modals
+  window.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+      e.preventDefault();
+      if (searchInput) {
+        searchInput.focus();
+        searchInput.select();
+      }
+    } else if (e.key === "/" && document.activeElement !== searchInput && !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName)) {
+      e.preventDefault();
+      if (searchInput) {
+        searchInput.focus();
+        searchInput.select();
+      }
+    } else if (e.key === "Escape") {
+      closeDeviceModal();
+      closeDeviceDetailsModal();
+      if (searchDropdown) searchDropdown.classList.remove("show");
+      const notifDrawer = document.getElementById("notification-drawer");
+      if (notifDrawer) notifDrawer.classList.remove("show");
+    }
+  });
 
   // Device Filters
   const catFilter = document.getElementById("device-filter-category");
@@ -230,9 +425,25 @@ function initEventListeners() {
     });
   });
 
+  // Upcoming Warranty Expirations Filter Pills
+  document.querySelectorAll(".upcoming-filter-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".upcoming-filter-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      state.filters.upcomingFilter = btn.getAttribute("data-filter");
+      renderUpcomingList();
+    });
+  });
+
   // Header Add Device Button
   const headerAddBtn = document.getElementById("btn-header-add-device");
   if (headerAddBtn) headerAddBtn.addEventListener("click", openAddDeviceModal);
+
+  // Header Export Button
+  const headerExportBtn = document.getElementById("btn-header-export");
+  if (headerExportBtn) {
+    headerExportBtn.addEventListener("click", () => triggerExport("excel"));
+  }
 
   // Device Form Submission
   const deviceForm = document.getElementById("device-form");
@@ -276,6 +487,70 @@ function initEventListeners() {
       if (devId) openEditDeviceModal(devId);
     });
   }
+}
+
+// =========================================================================
+// Global Search Live Dropdown Logic
+// =========================================================================
+
+function handleGlobalSearchInput(query) {
+  const searchDropdown = document.getElementById("search-results-dropdown");
+  if (!searchDropdown) return;
+
+  if (!query || query.length === 0) {
+    searchDropdown.classList.remove("show");
+    searchDropdown.innerHTML = "";
+    return;
+  }
+
+  const q = query.toLowerCase();
+  const matches = state.devices.filter(d => 
+    (d.Device_Name || "").toLowerCase().includes(q) ||
+    (d.Serial_Number || "").toLowerCase().includes(q) ||
+    (d.Device_ID || "").toLowerCase().includes(q) ||
+    (d.Brand || "").toLowerCase().includes(q) ||
+    (d.Model_Number || "").toLowerCase().includes(q) ||
+    (d.Assigned_User || "").toLowerCase().includes(q) ||
+    (d.Department || "").toLowerCase().includes(q)
+  ).slice(0, 6);
+
+  if (matches.length === 0) {
+    searchDropdown.innerHTML = `
+      <div style="padding: 16px; text-align: center; color: var(--text-muted); font-size: 13px;">
+        No hardware matching "<strong>${escapeHtml(query)}</strong>"
+      </div>
+    `;
+    searchDropdown.classList.add("show");
+    return;
+  }
+
+  searchDropdown.innerHTML = matches.map(d => {
+    let statusClass = "status-active";
+    if (d.status === "Expired") statusClass = "status-expired";
+    else if (d.status === "Expiring Soon") statusClass = "status-expiring";
+
+    return `
+      <div class="search-result-item" onclick="selectSearchResult('${d.Device_ID}')">
+        <div class="search-res-info">
+          <div class="search-res-name">${escapeHtml(d.Device_Name)}</div>
+          <div style="font-size: 11.5px; color: var(--text-muted);">
+            S/N: <code>${escapeHtml(d.Serial_Number)}</code> • ${escapeHtml(d.Category)} • ${escapeHtml(d.Department || 'IT')}
+          </div>
+        </div>
+        <div style="text-align: right;">
+          <span class="status-pill ${statusClass}" style="font-size: 11px; padding: 2px 8px;">${d.status}</span>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  searchDropdown.classList.add("show");
+}
+
+function selectSearchResult(deviceId) {
+  const searchDropdown = document.getElementById("search-results-dropdown");
+  if (searchDropdown) searchDropdown.classList.remove("show");
+  openDeviceDetails(deviceId);
 }
 
 // =========================================================================
@@ -324,7 +599,7 @@ function showLoginView() {
     const submitBtn = document.getElementById("btn-login-submit");
     if (submitBtn) {
       submitBtn.disabled = false;
-      submitBtn.innerText = "Sign In to Dashboard";
+      submitBtn.innerHTML = `<span>Sign In to Dashboard</span><svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>`;
     }
   } catch (e) {
     console.error("showLoginView error:", e);
@@ -361,9 +636,9 @@ function showLoginAlert(msg) {
   const alertBox = document.getElementById("login-alert");
   if (alertBox) {
     alertBox.innerHTML = `
-      <div style="display: flex; align-items: flex-start; gap: 8px; text-align: left;">
-        <span style="font-size: 16px;">⚠️</span>
-        <div style="flex: 1; font-size: 13px; line-height: 1.4; word-break: break-word;">${msg}</div>
+      <div style="display: flex; align-items: flex-start; gap: 10px; text-align: left;">
+        <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="flex-shrink: 0; color: #ef4444;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+        <div style="flex: 1; font-size: 13px; line-height: 1.4; word-break: break-word;">${escapeHtml(msg)}</div>
       </div>
     `;
     alertBox.style.display = "block";
@@ -386,7 +661,7 @@ function handleLoginSubmit(e) {
   const submitBtn = document.getElementById("btn-login-submit");
   if (submitBtn) {
     submitBtn.disabled = true;
-    submitBtn.innerText = "Signing in via Streamlit Backend...";
+    submitBtn.innerHTML = `<span>Signing in via Backend...</span>`;
   }
   hideLoginAlert();
 
@@ -397,7 +672,7 @@ function handleLoginSubmit(e) {
   setTimeout(() => {
     if (submitBtn && submitBtn.disabled && !state.user) {
       submitBtn.disabled = false;
-      submitBtn.innerText = "Sign In to Dashboard";
+      submitBtn.innerHTML = `<span>Sign In to Dashboard</span><svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>`;
     }
   }, 12000);
 }
@@ -414,7 +689,7 @@ function handleLogout() {
   state.user = null;
   sendToStreamlit("logout", {});
   showLoginView();
-  showToast("Logged out successfully.", "info");
+  showToast("Signed out successfully.", "info");
 }
 
 function updateUserInfoUI() {
@@ -430,11 +705,6 @@ function updateUserInfoUI() {
 
 function updateCloudSyncUI() {
   const pill = document.getElementById("cloud-sync-pill");
-  const text = document.getElementById("cloud-sync-text");
-  const settingsStatus = document.getElementById("settings-drive-status");
-  const settingsEmail = document.getElementById("settings-drive-email");
-  const copyBtn = document.getElementById("btn-copy-sa-email");
-  const headerBadge = document.getElementById("drive-header-status-badge");
   const isConfigured = state.cloudSync && state.cloudSync.configured;
   const emailVal = state.cloudSync ? state.cloudSync.email : null;
 
@@ -444,177 +714,230 @@ function updateCloudSyncUI() {
       pill.innerHTML = `<span class="pulse-beacon"></span><span>Drive Synced</span>`;
       pill.title = `Google Drive connected (${emailVal || ''})`;
     }
-    if (headerBadge) {
-      headerBadge.innerHTML = `<span class="badge badge-success" style="background: rgba(16, 185, 129, 0.2); color: #34d399; font-size: 12px;">🟢 Cloud Synced Active</span>`;
-    }
-    if (settingsStatus) {
-      settingsStatus.innerHTML = `<span class="pulse-beacon"></span><span style="color: var(--success);">Google Drive Connected & Synchronized</span>`;
-    }
-    if (settingsEmail) {
-      settingsEmail.innerText = emailVal || "Service Account Connected";
-      settingsEmail.style.color = "var(--primary)";
-    }
-    if (copyBtn && emailVal) {
-      copyBtn.style.display = "inline-flex";
-    }
-    const fileIdEl = document.getElementById("settings-drive-fileid");
-    const btnOpenDrive = document.getElementById("btn-open-in-drive");
-    if (state.cloudSync.file_id) {
-      const driveUrl = `https://drive.google.com/file/d/${state.cloudSync.file_id}/view`;
-      if (fileIdEl) {
-        fileIdEl.innerHTML = `File ID: <a href="${driveUrl}" target="_blank" style="color: var(--primary); text-decoration: underline; font-family: monospace; font-weight: 600;">${state.cloudSync.file_id}</a> ↗ (Live in Google Drive)`;
-      }
-      if (btnOpenDrive) {
-        btnOpenDrive.href = driveUrl;
-        btnOpenDrive.style.display = "inline-flex";
-      }
-    }
   } else {
     if (pill) {
       pill.classList.remove("connected");
       pill.innerHTML = `<span class="status-indicator-dot" style="background: #ef4444;"></span><span style="color: #ef4444;">Drive Disconnected</span>`;
-      pill.title = "Google Drive Disconnected. Connect Google Drive in Settings.";
+      pill.title = "Google Drive Disconnected. Configure Streamlit Secrets.";
     }
-    if (headerBadge) {
-      headerBadge.innerHTML = `<span class="badge badge-danger" style="background: rgba(239, 68, 68, 0.2); color: #f87171; font-size: 12px;">⚠️ Google Drive Disconnected</span>`;
-    }
-    if (settingsStatus) {
-      settingsStatus.innerHTML = `<span class="status-indicator-dot" style="background: #ef4444;"></span><span style="color: #ef4444;">Google Drive Disconnected (Cloud Database Offline)</span>`;
-    }
-    if (settingsEmail) {
-      settingsEmail.innerText = "No valid Google Service Account connected. Paste your Service Account JSON below or configure Streamlit Secrets.";
-      settingsEmail.style.color = "var(--text-muted)";
-    }
-    if (copyBtn) {
-      copyBtn.style.display = "none";
-    }
-  }
-}
-
-function copyServiceAccountEmail() {
-  const email = state.cloudSync ? state.cloudSync.email : null;
-  if (!email) return;
-
-  navigator.clipboard.writeText(email).then(() => {
-    showToast("Service Account Email copied to clipboard!", "success");
-  }).catch(() => {
-    // Fallback for iframe copy
-    const temp = document.createElement("textarea");
-    temp.value = email;
-    document.body.appendChild(temp);
-    temp.select();
-    document.execCommand("copy");
-    document.body.removeChild(temp);
-    showToast("Service Account Email copied to clipboard!", "success");
-  });
-}
-
-function togglePasteJsonBox() {
-  const container = document.getElementById("paste-json-container");
-  if (!container) return;
-  container.style.display = (container.style.display === "none" || container.style.display === "") ? "block" : "none";
-}
-
-function handleDriveFileSelected(event) {
-  const file = event.target.files && event.target.files[0];
-  if (!file) return;
-
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    const content = e.target.result;
-    processDriveJsonContent(content);
-  };
-  reader.readAsText(file);
-}
-
-function handlePasteJsonSubmit() {
-  const textarea = document.getElementById("paste-json-textarea");
-  if (!textarea) return;
-  const content = textarea.value.trim();
-  if (!content) {
-    alert("Please paste your service account JSON contents.");
-    return;
-  }
-  processDriveJsonContent(content);
-}
-
-function processDriveJsonContent(rawContent) {
-  try {
-    const parsed = JSON.parse(rawContent);
-    if (!parsed.client_email || parsed.type !== "service_account") {
-      alert("Invalid JSON format. The file must be a Google Cloud Service Account key containing 'client_email' and 'type': 'service_account'.");
-      return;
-    }
-
-    sendToStreamlit("save_drive_credentials", { json_content: rawContent });
-    showToast(`Connecting Service Account (${parsed.client_email})...`, "info");
-  } catch (err) {
-    alert("Invalid JSON syntax: " + err.message);
   }
 }
 
 // =========================================================================
-// Dashboard Rendering & Charts
+// Executive Dashboard Rendering & Visual Health Score
 // =========================================================================
 
 function renderDashboard() {
   const analytics = state.analytics || {};
-  const total = analytics.total_devices || state.devices.length;
+  const total = analytics.total_devices !== undefined ? analytics.total_devices : state.devices.length;
   const active = analytics.active_warranties || 0;
   const activePct = analytics.active_percentage || (total > 0 ? ((active / total) * 100).toFixed(1) : 0);
   const expiring = analytics.expiring_soon || 0;
   const expired = analytics.expired_warranties || 0;
   const unreadNotifs = analytics.unread_notifications || 0;
 
-  document.getElementById("metric-total-devices").innerText = total;
-  document.getElementById("metric-active-warranties").innerText = active;
-  document.getElementById("metric-active-percent").innerText = `${activePct}% active coverage`;
-  document.getElementById("metric-expiring-soon").innerText = expiring;
-  document.getElementById("metric-expired-warranties").innerText = expired;
-  document.getElementById("metric-unread-notifs").innerText = unreadNotifs;
+  // Animated KPI numbers
+  animateCountUp("metric-total-devices", total);
+  animateCountUp("metric-active-warranties", active);
+  animateCountUp("metric-expiring-soon", expiring);
+  animateCountUp("metric-expired-warranties", expired);
+  animateCountUp("metric-unread-notifs", unreadNotifs);
 
-  // Sidebar badge for expiring
+  const activePercentEl = document.getElementById("metric-active-percent");
+  if (activePercentEl) {
+    activePercentEl.innerText = `${activePct}% active coverage`;
+  }
+
+  // Sidebar badge for expiring warranties
   const sidebarBadge = document.getElementById("sidebar-expiring-badge");
   if (sidebarBadge) {
-    if (expiring > 0) {
-      sidebarBadge.innerText = expiring;
+    const urgentCount = expiring + expired;
+    if (urgentCount > 0) {
+      sidebarBadge.innerText = urgentCount;
       sidebarBadge.style.display = "inline-block";
     } else {
       sidebarBadge.style.display = "none";
     }
   }
 
+  // Update Fleet Health Score Circular Gauge
+  updateFleetHealthScore(active, total);
+
+  // Update Action Required Alert Banner
+  updateActionAlertBanner(expired, expiring);
+
   renderUpcomingList();
   renderActivityTimeline();
   renderDashboardCharts();
 }
 
+function updateFleetHealthScore(activeCount, totalCount) {
+  const scoreCircle = document.getElementById("health-score-circle");
+  const scoreLabel = document.getElementById("health-score-label");
+  const scoreStatus = document.getElementById("health-score-status");
+
+  if (!scoreCircle || !scoreLabel || !scoreStatus) return;
+
+  const score = totalCount > 0 ? Math.round((activeCount / totalCount) * 100) : 100;
+  scoreLabel.innerText = `${score}%`;
+
+  // Stroke-dashoffset for circular SVG meter
+  const offset = 100 - score;
+  scoreCircle.style.strokeDashoffset = offset;
+
+  if (score >= 80) {
+    scoreCircle.setAttribute("stroke", "#10B981");
+    scoreStatus.innerText = "Good Condition";
+    scoreStatus.style.color = "#10B981";
+  } else if (score >= 50) {
+    scoreCircle.setAttribute("stroke", "#F59E0B");
+    scoreStatus.innerText = "Review Recommended";
+    scoreStatus.style.color = "#F59E0B";
+  } else {
+    scoreCircle.setAttribute("stroke", "#EF4444");
+    scoreStatus.innerText = "Critical Attention";
+    scoreStatus.style.color = "#EF4444";
+  }
+}
+
+function updateActionAlertBanner(expired, expiring) {
+  const banner = document.getElementById("action-alert-banner");
+  const text = document.getElementById("action-alert-text");
+  if (!banner || !text) return;
+
+  if (expired > 0 || expiring > 0) {
+    const parts = [];
+    if (expired > 0) parts.push(`<strong>${expired}</strong> ${expired === 1 ? 'warranty' : 'warranties'} expired`);
+    if (expiring > 0) parts.push(`<strong>${expiring}</strong> expiring soon`);
+
+    text.innerHTML = parts.join(" and ") + " — immediate renewal or maintenance recommended.";
+    banner.style.display = "flex";
+  } else {
+    banner.style.display = "none";
+  }
+}
+
+function dismissActionAlert() {
+  const banner = document.getElementById("action-alert-banner");
+  if (banner) banner.style.display = "none";
+}
+
+// =========================================================================
+// Upcoming Expirations Cards (with Urgency Progress Bar)
+// =========================================================================
+
 function renderUpcomingList() {
   const container = document.getElementById("upcoming-expirations-list");
   if (!container) return;
 
-  const urgent = (state.analytics.upcoming_expirations || []).slice(0, 5);
+  let urgent = [...(state.analytics.upcoming_expirations || [])];
+
+  // Apply upcoming filter (all, soon, expired)
+  const filter = state.filters.upcomingFilter || "all";
+  if (filter === "soon") {
+    urgent = urgent.filter(d => d.days_remaining !== null && d.days_remaining >= 0);
+  } else if (filter === "expired") {
+    urgent = urgent.filter(d => d.days_remaining !== null && d.days_remaining < 0);
+  }
+
+  urgent = urgent.slice(0, 6);
+
   if (urgent.length === 0) {
-    container.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 18px; font-size: 13px;">No expiring equipment detected. All active warranties are healthy!</div>`;
+    container.innerHTML = `
+      <div style="text-align: center; color: var(--text-muted); padding: 28px 16px; font-size: 13px;">
+        <svg width="32" height="32" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin: 0 auto 8px; color: #10B981; opacity: 0.8;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        <div>No matching warranty expirations in this horizon. Fleet is healthy!</div>
+      </div>
+    `;
     return;
   }
 
-  container.innerHTML = urgent.map(dev => `
-    <div class="expiring-item" onclick="openDeviceDetails('${dev.Device_ID}')" style="cursor: pointer;">
-      <div class="expiring-device-info">
-        <img src="${dev.Image_URL || 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=300'}" class="device-thumb" alt="${dev.Device_Name}">
-        <div>
-          <div class="expiring-device-name">${dev.Device_Name}</div>
-          <div class="expiring-device-sub">S/N: ${dev.Serial_Number} • ${dev.Department}</div>
+  container.innerHTML = urgent.map(dev => {
+    const days = dev.days_remaining !== undefined ? dev.days_remaining : 0;
+    const isExpired = days < 0;
+    const isSoon = days >= 0 && days <= 30;
+
+    // Determine status pill and progress bar color
+    let statusClass = "status-active";
+    let fillClass = "fill-green";
+    let progressPct = 100;
+    let labelRight = `${days} days left`;
+
+    if (isExpired) {
+      statusClass = "status-expired";
+      fillClass = "fill-red";
+      progressPct = 100;
+      labelRight = `Expired ${Math.abs(days)}d ago`;
+    } else if (isSoon) {
+      statusClass = "status-expiring";
+      fillClass = "fill-amber";
+      progressPct = Math.max(10, Math.round(((30 - days) / 30) * 100));
+      labelRight = `${days}d remaining`;
+    } else {
+      progressPct = Math.min(100, Math.max(15, Math.round((days / 365) * 100)));
+    }
+
+    // Category SVG fallback icon
+    const categoryIcon = getCategorySvg(dev.Category);
+
+    return `
+      <div class="expiring-item">
+        <div class="expiring-item-top">
+          <div class="expiring-device-info">
+            <div class="device-avatar-chip">
+              ${categoryIcon}
+            </div>
+            <div class="device-title-wrap">
+              <span class="device-title-name">${escapeHtml(dev.Device_Name)}</span>
+              <span class="device-title-meta">
+                S/N: <code>${escapeHtml(dev.Serial_Number)}</code> • <span class="badge-dept">${escapeHtml(dev.Department || 'IT')}</span>
+              </span>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="status-pill ${statusClass}">${dev.countdown_text || labelRight}</span>
+            <div class="expiring-actions">
+              <button type="button" class="btn-action-mini" title="Renew Warranty" onclick="openEditDeviceModal('${dev.Device_ID}')">Renew</button>
+              <button type="button" class="btn-action-mini" title="View Full Specs" onclick="openDeviceDetails('${dev.Device_ID}')">Specs</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="warranty-progress-wrap">
+          <div class="warranty-progress-bar">
+            <div class="warranty-progress-fill ${fillClass}" style="width: ${progressPct}%;"></div>
+          </div>
+          <div class="warranty-progress-labels">
+            <span>Exp: <strong>${dev.Warranty_End_Date}</strong></span>
+            <span>${labelRight}</span>
+          </div>
         </div>
       </div>
-      <div style="text-align: right;">
-        <span class="badge ${dev.badge_class || 'badge-warning'}">${dev.countdown_text || 'Expiring Soon'}</span>
-        <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">${dev.Warranty_End_Date}</div>
-      </div>
-    </div>
-  `).join("");
+    `;
+  }).join("");
 }
+
+// Category SVG Helper
+function getCategorySvg(category) {
+  const cat = (category || "").toLowerCase();
+  if (cat.includes("laptop") || cat.includes("notebook")) {
+    return `<svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>`;
+  } else if (cat.includes("desktop") || cat.includes("pc")) {
+    return `<svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>`;
+  } else if (cat.includes("monitor")) {
+    return `<svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"/></svg>`;
+  } else if (cat.includes("printer")) {
+    return `<svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4H7v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>`;
+  } else if (cat.includes("router") || cat.includes("switch")) {
+    return `<svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"/></svg>`;
+  } else {
+    return `<svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/></svg>`;
+  }
+}
+
+// =========================================================================
+// Recent Activity Timeline (Vertical Connected Timeline)
+// =========================================================================
 
 function renderActivityTimeline() {
   const container = document.getElementById("activity-timeline");
@@ -622,34 +945,113 @@ function renderActivityTimeline() {
 
   const logs = (state.analytics.activity_logs || []).slice(0, 6);
   if (logs.length === 0) {
-    container.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 18px; font-size: 13px;">No recent activity logs.</div>`;
+    container.innerHTML = `
+      <div style="text-align: center; color: var(--text-muted); padding: 24px 16px; font-size: 13px;">
+        No recent activity records found.
+      </div>
+    `;
     return;
   }
 
   container.innerHTML = logs.map(log => {
-    let dateStr = log.Timestamp || "";
-    try {
-      const dt = new Date(log.Timestamp);
-      dateStr = dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + " • " + dt.toLocaleDateString();
-    } catch(e) {}
+    const rawAction = (log.Action || "").toUpperCase();
+    let dotClass = "dot-auth";
+
+    if (rawAction.includes("CREATE") || rawAction.includes("ADD")) {
+      dotClass = "dot-create";
+    } else if (rawAction.includes("UPDATE") || rawAction.includes("RENEW")) {
+      dotClass = "dot-update";
+    } else if (rawAction.includes("DELETE") || rawAction.includes("ALERT") || rawAction.includes("EXPIRE")) {
+      dotClass = "dot-alert";
+    }
+
+    const relTime = formatRelativeTime(log.Timestamp);
 
     return `
       <div class="activity-item">
-        <div class="activity-dot"></div>
-        <div class="activity-content">
-          <div class="activity-title">${log.Action} <span style="font-weight: 400; color: var(--text-muted);">(${log.Device_ID})</span></div>
-          <div class="activity-desc">${log.Details}</div>
-          <div class="activity-time">${dateStr} • By ${log.User_Email}</div>
+        <div class="activity-dot ${dotClass}"></div>
+        <div class="activity-header-line">
+          <span class="activity-action-name">${escapeHtml(log.Action)} <span style="font-weight: 400; color: var(--text-muted);">(${escapeHtml(log.Device_ID || 'System')})</span></span>
+          <span class="activity-time-rel" title="${escapeHtml(log.Timestamp || '')}">${relTime}</span>
+        </div>
+        <div class="activity-details-text">${escapeHtml(log.Details || '')}</div>
+        <div style="font-size: 11px; color: var(--text-muted); margin-top: 3px;">
+          By <strong>${escapeHtml(log.User_Email || 'System')}</strong>
         </div>
       </div>
     `;
   }).join("");
 }
 
+// Relative Time Formatting Helper
+function formatRelativeTime(timestamp) {
+  if (!timestamp) return "Just now";
+  try {
+    const now = new Date();
+    const date = new Date(timestamp);
+    const diffMs = now - date;
+    const diffSec = Math.floor(diffMs / 1000);
+    const diffMin = Math.floor(diffSec / 60);
+    const diffHour = Math.floor(diffMin / 60);
+    const diffDay = Math.floor(diffHour / 24);
+
+    if (diffSec < 45) return "Just now";
+    if (diffMin < 60) return `${diffMin} min${diffMin > 1 ? 's' : ''} ago`;
+    if (diffHour < 24) return `${diffHour} hr${diffHour > 1 ? 's' : ''} ago`;
+    if (diffDay === 1) return "Yesterday";
+    if (diffDay < 7) return `${diffDay} days ago`;
+    return date.toLocaleDateString();
+  } catch(e) {
+    return timestamp;
+  }
+}
+
+// =========================================================================
+// Chart.js Visualizations (Donut Center Text & Category Gradients)
+// =========================================================================
+
+// Custom Chart.js Plugin to draw bold total in Donut center
+const centerTextPlugin = {
+  id: "centerTextPlugin",
+  beforeDraw: function(chart) {
+    if (chart.config.type !== "doughnut") return;
+    const { width, height, ctx } = chart;
+    ctx.restore();
+
+    const isDark = document.documentElement.classList.contains("dark-mode");
+    const numColor = isDark ? "#F1F5F9" : "#0F172A";
+    const labelColor = isDark ? "#94A3B8" : "#64748B";
+
+    const total = state.analytics.total_devices !== undefined ? state.analytics.total_devices : state.devices.length;
+
+    // Draw total number
+    const fontSizeNum = Math.min(Math.round(height / 6.5), 32);
+    ctx.font = `800 ${fontSizeNum}px Inter, sans-serif`;
+    ctx.textBaseline = "middle";
+    ctx.textAlign = "center";
+    ctx.fillStyle = numColor;
+    const textX = width / 2;
+    const textY = height / 2 - 8;
+    ctx.fillText(total.toString(), textX, textY);
+
+    // Draw label "TOTAL"
+    const fontSizeLabel = Math.min(Math.round(height / 19), 11);
+    ctx.font = `600 ${fontSizeLabel}px Inter, sans-serif`;
+    ctx.fillStyle = labelColor;
+    ctx.fillText("DEVICES", textX, textY + fontSizeNum * 0.7);
+
+    ctx.save();
+  }
+};
+
 function renderDashboardCharts() {
   if (typeof Chart === "undefined") return;
 
-  // Chart 1: Warranty Status Doughnut Chart
+  const isDark = document.documentElement.classList.contains("dark-mode");
+  const textColor = isDark ? "#94A3B8" : "#64748B";
+  const gridColor = isDark ? "rgba(255, 255, 255, 0.05)" : "#F1F5F9";
+
+  // Chart 1: Warranty Status Donut Chart with Center Total
   try {
     const ctxStatus = document.getElementById("chart-warranty-status");
     if (ctxStatus) {
@@ -660,24 +1062,52 @@ function renderDashboardCharts() {
       }
 
       const dist = state.analytics.status_distribution || { "Active": 0, "Expiring Soon": 0, "Expired": 0 };
+      const activeCount = dist["Active"] || 0;
+      const expiringCount = dist["Expiring Soon"] || 0;
+      const expiredCount = dist["Expired"] || 0;
+
       state.charts.statusDoughnut = new Chart(ctxStatus, {
         type: "doughnut",
         data: {
           labels: ["Active", "Expiring Soon", "Expired"],
           datasets: [{
-            data: [dist["Active"] || 0, dist["Expiring Soon"] || 0, dist["Expired"] || 0],
-            backgroundColor: ["#10b981", "#f59e0b", "#ef4444"],
+            data: [activeCount, expiringCount, expiredCount],
+            backgroundColor: ["#10B981", "#F59E0B", "#EF4444"],
             borderWidth: 2,
-            borderColor: "#ffffff"
+            borderColor: isDark ? "#111B3A" : "#FFFFFF",
+            borderRadius: 6,
+            spacing: 2
           }]
         },
+        plugins: [centerTextPlugin],
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          cutout: "74%",
           plugins: {
-            legend: { position: "bottom", labels: { boxWidth: 12, font: { family: "Inter", size: 12 } } }
-          },
-          cutout: "70%"
+            legend: {
+              position: "bottom",
+              labels: {
+                boxWidth: 10,
+                boxHeight: 10,
+                usePointStyle: true,
+                pointStyle: "circle",
+                color: textColor,
+                font: { family: "Inter", size: 12, weight: "500" },
+                padding: 16
+              }
+            },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  const val = context.raw || 0;
+                  const total = (context.dataset.data || []).reduce((a, b) => a + b, 0);
+                  const pct = total > 0 ? Math.round((val / total) * 100) : 0;
+                  return ` ${context.label}: ${val} (${pct}%)`;
+                }
+              }
+            }
+          }
         }
       });
     }
@@ -704,21 +1134,36 @@ function renderDashboardCharts() {
         data: {
           labels: labels,
           datasets: [{
-            label: "Registered Devices",
+            label: "Registered Equipment",
             data: dataVals,
-            backgroundColor: "#3b82f6",
-            borderRadius: 6
+            backgroundColor: "#2563EB",
+            borderRadius: { topLeft: 6, topRight: 6 },
+            borderSkipped: false
           }]
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
           plugins: {
-            legend: { display: false }
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: function(ctx) {
+                  return ` Devices: ${ctx.raw}`;
+                }
+              }
+            }
           },
           scales: {
-            y: { beginAtZero: true, ticks: { stepSize: 1, font: { family: "Inter" } }, grid: { color: "#f1f5f9" } },
-            x: { ticks: { font: { family: "Inter", size: 11 } }, grid: { display: false } }
+            y: {
+              beginAtZero: true,
+              ticks: { stepSize: 1, color: textColor, font: { family: "Inter", size: 11 } },
+              grid: { color: gridColor }
+            },
+            x: {
+              ticks: { color: textColor, font: { family: "Inter", size: 11 } },
+              grid: { display: false }
+            }
           }
         }
       });
@@ -737,42 +1182,51 @@ function renderDevicesTable() {
   if (!tbody) return;
 
   const filtered = filterDevices(state.devices);
-  document.getElementById("devices-count-label").innerText = filtered.length;
+  const countLabel = document.getElementById("devices-count-label");
+  if (countLabel) countLabel.innerText = filtered.length;
 
   if (filtered.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 36px; color: var(--text-muted);">No devices match your filter criteria.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 48px 16px; color: var(--text-muted);">No devices match your filter criteria.</td></tr>`;
     return;
   }
 
-  tbody.innerHTML = filtered.map(d => `
-    <tr>
-      <td>
-        <div style="display: flex; align-items: center; gap: 12px;">
-          <img src="${d.Image_URL || 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=300'}" style="width: 38px; height: 38px; border-radius: 6px; object-fit: cover;" alt="Device">
-          <div>
-            <div style="font-weight: 600; color: var(--text-main);">${d.Device_Name}</div>
-            <div style="font-size: 11px; color: var(--text-muted);">${d.Brand || ''} ${d.Model_Number || ''} • <strong>${d.Device_ID}</strong></div>
+  tbody.innerHTML = filtered.map(d => {
+    let statusClass = "status-active";
+    if (d.status === "Expired") statusClass = "status-expired";
+    else if (d.status === "Expiring Soon") statusClass = "status-expiring";
+
+    return `
+      <tr>
+        <td>
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div class="device-avatar-chip" style="width: 36px; height: 36px;">
+              ${getCategorySvg(d.Category)}
+            </div>
+            <div>
+              <div style="font-weight: 600; color: var(--text-primary); font-size: 13.5px;">${escapeHtml(d.Device_Name)}</div>
+              <div style="font-size: 11.5px; color: var(--text-muted);">${escapeHtml(d.Brand || '')} ${escapeHtml(d.Model_Number || '')} • <strong>${escapeHtml(d.Device_ID)}</strong></div>
+            </div>
           </div>
-        </div>
-      </td>
-      <td><span class="badge badge-secondary">${d.Category}</span></td>
-      <td><code style="background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-size: 12px;">${d.Serial_Number}</code></td>
-      <td>${d.Assigned_User || 'Unassigned'}</td>
-      <td>${d.Department || 'IT'}</td>
-      <td>
-        <div>${d.Warranty_End_Date}</div>
-        <div style="font-size: 11px; color: var(--text-muted);">${d.countdown_text || ''}</div>
-      </td>
-      <td><span class="badge ${d.badge_class || 'badge-success'}">${d.status || 'Active'}</span></td>
-      <td style="text-align: right;">
-        <div class="action-btns" style="justify-content: flex-end;">
-          <button type="button" class="action-btn" title="Inspect Specs" onclick="openDeviceDetails('${d.Device_ID}')">👁 View</button>
-          <button type="button" class="action-btn" title="Edit Record" onclick="openEditDeviceModal('${d.Device_ID}')">✏ Edit</button>
-          <button type="button" class="action-btn action-btn-danger" title="Delete Device" onclick="deleteDevice('${d.Device_ID}')">🗑</button>
-        </div>
-      </td>
-    </tr>
-  `).join("");
+        </td>
+        <td><span class="badge badge-secondary">${escapeHtml(d.Category)}</span></td>
+        <td><code style="background: var(--bg-card-subtle); padding: 2px 7px; border-radius: 4px; font-size: 12px; border: 1px solid var(--border-subtle);">${escapeHtml(d.Serial_Number)}</code></td>
+        <td>${escapeHtml(d.Assigned_User || 'Unassigned')}</td>
+        <td>${escapeHtml(d.Department || 'IT')}</td>
+        <td>
+          <div style="font-weight: 500;">${d.Warranty_End_Date}</div>
+          <div style="font-size: 11px; color: var(--text-muted);">${d.countdown_text || ''}</div>
+        </td>
+        <td><span class="status-pill ${statusClass}">${d.status || 'Active'}</span></td>
+        <td style="text-align: right;">
+          <div class="action-btns" style="justify-content: flex-end;">
+            <button type="button" class="action-btn" title="Inspect Full Specifications" onclick="openDeviceDetails('${d.Device_ID}')">View</button>
+            <button type="button" class="action-btn" title="Edit Device Record" onclick="openEditDeviceModal('${d.Device_ID}')">Edit</button>
+            <button type="button" class="action-btn action-btn-danger" title="Delete Device" onclick="deleteDevice('${d.Device_ID}')">Delete</button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join("");
 }
 
 function filterDevices(devicesList) {
@@ -786,7 +1240,8 @@ function filterDevices(devicesList) {
         (d.Device_ID || "").toLowerCase().includes(q) ||
         (d.Brand || "").toLowerCase().includes(q) ||
         (d.Model_Number || "").toLowerCase().includes(q) ||
-        (d.Assigned_User || "").toLowerCase().includes(q)
+        (d.Assigned_User || "").toLowerCase().includes(q) ||
+        (d.Department || "").toLowerCase().includes(q)
       );
       if (!match) return false;
     }
@@ -829,32 +1284,38 @@ function renderWarrantiesTable() {
   list.sort((a, b) => (a.days_remaining || 0) - (b.days_remaining || 0));
 
   if (list.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 36px; color: var(--text-muted);">No warranty records in this horizon.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 48px 16px; color: var(--text-muted);">No warranty records in this horizon.</td></tr>`;
     return;
   }
 
-  tbody.innerHTML = list.map(d => `
-    <tr>
-      <td>
-        <div style="font-weight: 600;">${d.Device_Name}</div>
-        <div style="font-size: 11px; color: var(--text-muted);">${d.Category} • ${d.Device_ID}</div>
-      </td>
-      <td><code>${d.Serial_Number}</code></td>
-      <td>${d.Assigned_User} (${d.Department})</td>
-      <td>${d.Warranty_Start_Date || 'N/A'} → <strong>${d.Warranty_End_Date}</strong></td>
-      <td>
-        <span class="badge ${d.badge_class || 'badge-secondary'}">${d.countdown_text}</span>
-      </td>
-      <td><span class="badge ${d.badge_class || 'badge-secondary'}">${d.status}</span></td>
-      <td style="text-align: right;">
-        <button type="button" class="btn-secondary" style="padding: 4px 10px; font-size: 12px;" onclick="openEditDeviceModal('${d.Device_ID}')">Renew / Update</button>
-      </td>
-    </tr>
-  `).join("");
+  tbody.innerHTML = list.map(d => {
+    let statusClass = "status-active";
+    if (d.status === "Expired") statusClass = "status-expired";
+    else if (d.status === "Expiring Soon") statusClass = "status-expiring";
+
+    return `
+      <tr>
+        <td>
+          <div style="font-weight: 600; font-size: 13.5px; color: var(--text-primary);">${escapeHtml(d.Device_Name)}</div>
+          <div style="font-size: 11.5px; color: var(--text-muted);">${escapeHtml(d.Category)} • ${escapeHtml(d.Device_ID)}</div>
+        </td>
+        <td><code style="background: var(--bg-card-subtle); padding: 2px 7px; border-radius: 4px; font-size: 12px; border: 1px solid var(--border-subtle);">${escapeHtml(d.Serial_Number)}</code></td>
+        <td>${escapeHtml(d.Assigned_User || 'Unassigned')} (${escapeHtml(d.Department || 'IT')})</td>
+        <td>${d.Warranty_Start_Date || 'N/A'} → <strong>${d.Warranty_End_Date}</strong></td>
+        <td>
+          <span class="status-pill ${statusClass}">${d.countdown_text}</span>
+        </td>
+        <td><span class="status-pill ${statusClass}">${d.status}</span></td>
+        <td style="text-align: right;">
+          <button type="button" class="btn-secondary" style="padding: 4px 12px; font-size: 12px;" onclick="openEditDeviceModal('${d.Device_ID}')">Renew / Update</button>
+        </td>
+      </tr>
+    `;
+  }).join("");
 }
 
 // =========================================================================
-// Device Modal Handlers (Add / Edit / Delete / Inspect)
+// Device Modal Handlers (Add / Edit / Delete / Inspect - All 17 Fields)
 // =========================================================================
 
 function recalculateDuration() {
@@ -862,7 +1323,7 @@ function recalculateDuration() {
   const endVal = document.getElementById("form-warranty-end").value;
   const durationField = document.getElementById("form-duration");
 
-  if (!startVal || !endVal) return;
+  if (!startVal || !endVal || !durationField) return;
   const start = new Date(startVal);
   const end = new Date(endVal);
 
@@ -889,7 +1350,11 @@ function openAddDeviceModal() {
   document.getElementById("form-warranty-end").value = nextYear.toISOString().split("T")[0];
   recalculateDuration();
 
+  const modalBody = document.querySelector("#device-modal .modal-body");
+  if (modalBody) modalBody.scrollTop = 0;
+
   document.getElementById("device-modal").classList.add("show");
+  notifyFrameHeight();
 }
 
 function openEditDeviceModal(deviceId) {
@@ -916,7 +1381,12 @@ function openEditDeviceModal(deviceId) {
   document.getElementById("form-notes").value = device.Notes || "";
 
   recalculateDuration();
+
+  const modalBody = document.querySelector("#device-modal .modal-body");
+  if (modalBody) modalBody.scrollTop = 0;
+
   document.getElementById("device-modal").classList.add("show");
+  notifyFrameHeight();
 }
 
 function closeDeviceModal() {
@@ -984,39 +1454,49 @@ function openDeviceDetails(deviceId) {
   const editBtn = document.getElementById("btn-edit-from-details");
   if (editBtn) editBtn.setAttribute("data-device-id", d.Device_ID);
 
+  let statusClass = "status-active";
+  if (d.status === "Expired") statusClass = "status-expired";
+  else if (d.status === "Expiring Soon") statusClass = "status-expiring";
+
   container.innerHTML = `
-    <div style="display: flex; gap: 20px; margin-bottom: 20px;">
-      <img src="${d.Image_URL || 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=300'}" style="width: 140px; height: 140px; border-radius: 10px; object-fit: cover; border: 1px solid var(--border-color);" alt="${d.Device_Name}">
+    <div style="display: flex; gap: 20px; margin-bottom: 20px; align-items: center;">
+      <div class="device-avatar-chip" style="width: 72px; height: 72px; border-radius: 14px;">
+        ${getCategorySvg(d.Category)}
+      </div>
       <div style="flex: 1;">
         <div style="display: flex; align-items: center; gap: 8px;">
-          <span class="badge ${d.badge_class || 'badge-success'}">${d.status}</span>
+          <span class="status-pill ${statusClass}">${d.status}</span>
           <span class="badge badge-secondary">${d.Category}</span>
         </div>
-        <h2 style="font-size: 20px; font-weight: 700; color: var(--text-main); margin: 6px 0;">${d.Device_Name}</h2>
-        <div style="font-size: 13px; color: var(--text-muted);">${d.Brand || ''} ${d.Model_Number || ''}</div>
-        <div style="margin-top: 10px; font-size: 13px; font-weight: 600; color: var(--primary);">
+        <h2 style="font-size: 20px; font-weight: 700; color: var(--text-primary); margin: 6px 0;">${escapeHtml(d.Device_Name)}</h2>
+        <div style="font-size: 13px; color: var(--text-muted);">${escapeHtml(d.Brand || '')} ${escapeHtml(d.Model_Number || '')}</div>
+        <div style="margin-top: 6px; font-size: 13px; font-weight: 600; color: var(--primary);">
           ${d.countdown_text}
         </div>
       </div>
     </div>
 
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 13px; background: #f8fafc; padding: 16px; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 16px;">
-      <div><strong>Device ID:</strong> ${d.Device_ID}</div>
-      <div><strong>Hardware S/N:</strong> <code>${d.Serial_Number}</code></div>
-      <div><strong>Assigned User:</strong> ${d.Assigned_User || 'Unassigned'}</div>
-      <div><strong>Department:</strong> ${d.Department || 'IT'}</div>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 13px; background: var(--bg-card-subtle); padding: 18px; border-radius: 12px; border: 1px solid var(--border-subtle); margin-bottom: 16px;">
+      <div><strong>Device ID:</strong> ${escapeHtml(d.Device_ID)}</div>
+      <div><strong>Hardware S/N:</strong> <code>${escapeHtml(d.Serial_Number)}</code></div>
+      <div><strong>Assigned User:</strong> ${escapeHtml(d.Assigned_User || 'Unassigned')}</div>
+      <div><strong>Department:</strong> ${escapeHtml(d.Department || 'IT')}</div>
       <div><strong>Warranty Period:</strong> ${d.Warranty_Start_Date} → ${d.Warranty_End_Date}</div>
       <div><strong>Duration:</strong> ${d.Warranty_Duration_Months || '12'} Months</div>
       <div><strong>Purchase Price:</strong> $${d.Purchase_Price ? Number(d.Purchase_Price).toFixed(2) : '0.00'}</div>
-      <div><strong>Supplier:</strong> ${d.Supplier || 'N/A'}</div>
-      <div><strong>Invoice #:</strong> ${d.Invoice_Number || 'N/A'}</div>
+      <div><strong>Supplier:</strong> ${escapeHtml(d.Supplier || 'N/A')}</div>
+      <div><strong>Invoice #:</strong> ${escapeHtml(d.Invoice_Number || 'N/A')}</div>
       <div><strong>Last Audit:</strong> ${d.Updated_At ? d.Updated_At.substring(0, 10) : 'N/A'}</div>
     </div>
 
-    ${d.Notes ? `<div style="font-size: 13px; color: var(--text-muted); padding: 10px 0;"><strong>Remarks:</strong> ${d.Notes}</div>` : ''}
+    ${d.Notes ? `<div style="font-size: 13px; color: var(--text-secondary); padding: 8px 0;"><strong>Remarks:</strong> ${escapeHtml(d.Notes)}</div>` : ''}
   `;
 
+  const modalBody = document.querySelector("#device-details-modal .modal-body");
+  if (modalBody) modalBody.scrollTop = 0;
+
   document.getElementById("device-details-modal").classList.add("show");
+  notifyFrameHeight();
 }
 
 function closeDeviceDetailsModal() {
@@ -1050,11 +1530,11 @@ function renderNotificationsList() {
 
   container.innerHTML = state.notifications.map(n => `
     <div class="notif-item ${n.Status === 'unread' ? 'unread' : ''}" onclick="handleNotificationClick('${n.Notification_ID}')">
-      <div class="notif-icon-box" style="background: ${n.Urgency === 'critical' ? '#fee2e2' : '#fef3c7'}; color: ${n.Urgency === 'critical' ? '#ef4444' : '#f59e0b'};">
-        ${n.Urgency === 'critical' ? '🛑' : '⚠️'}
+      <div class="notif-icon-box" style="background: ${n.Urgency === 'critical' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(245, 158, 11, 0.15)'}; color: ${n.Urgency === 'critical' ? '#ef4444' : '#f59e0b'};">
+        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
       </div>
       <div style="flex: 1;">
-        <div class="notif-text">${n.Message}</div>
+        <div class="notif-text">${escapeHtml(n.Message)}</div>
         <div class="notif-time">${n.formatted_date || n.Notification_Date || ''} • <strong>${n.Device_ID}</strong></div>
       </div>
     </div>
@@ -1090,18 +1570,21 @@ function requestBrowserNotificationPermission() {
 }
 
 // =========================================================================
-// Reports & Analytics View
+// Reports & Department Analytics View
 // =========================================================================
 
 function renderReportsView() {
   const analytics = state.analytics || {};
-  document.getElementById("report-metric-this-month").innerText = analytics.expiring_this_month || 0;
-  document.getElementById("report-metric-30d").innerText = analytics.expiring_30_days || 0;
-  document.getElementById("report-metric-60d").innerText = analytics.expiring_60_days || 0;
-  document.getElementById("report-metric-90d").innerText = analytics.expiring_90_days || 0;
+  animateCountUp("report-metric-this-month", analytics.expiring_this_month || 0);
+  animateCountUp("report-metric-30d", analytics.expiring_30_days || 0);
+  animateCountUp("report-metric-60d", analytics.expiring_60_days || 0);
+  animateCountUp("report-metric-90d", analytics.expiring_90_days || 0);
 
   const assetVal = analytics.total_asset_value || 0;
-  document.getElementById("report-total-asset-val").innerText = `$${Number(assetVal).toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+  const assetValEl = document.getElementById("report-total-asset-val");
+  if (assetValEl) {
+    assetValEl.innerText = `$${Number(assetVal).toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+  }
 
   renderDepartmentChart();
 }
@@ -1109,6 +1592,10 @@ function renderReportsView() {
 function renderDepartmentChart() {
   const ctxDept = document.getElementById("chart-department-status");
   if (!ctxDept || typeof Chart === "undefined") return;
+
+  const isDark = document.documentElement.classList.contains("dark-mode");
+  const textColor = isDark ? "#94A3B8" : "#64748B";
+  const gridColor = isDark ? "rgba(255, 255, 255, 0.05)" : "#F1F5F9";
 
   try {
     const existing = Chart.getChart(ctxDept);
@@ -1128,20 +1615,30 @@ function renderDepartmentChart() {
       data: {
         labels: labels,
         datasets: [
-          { label: "Active", data: activeData, backgroundColor: "#10b981" },
-          { label: "Expiring Soon", data: expiringData, backgroundColor: "#f59e0b" },
-          { label: "Expired", data: expiredData, backgroundColor: "#ef4444" }
+          { label: "Active", data: activeData, backgroundColor: "#10B981" },
+          { label: "Expiring Soon", data: expiringData, backgroundColor: "#F59E0B" },
+          { label: "Expired", data: expiredData, backgroundColor: "#EF4444" }
         ]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
         scales: {
-          x: { stacked: true, grid: { display: false } },
-          y: { stacked: true, grid: { color: "#f1f5f9" } }
+          x: { stacked: true, grid: { display: false }, ticks: { color: textColor, font: { family: "Inter", size: 11 } } },
+          y: { stacked: true, grid: { color: gridColor }, ticks: { color: textColor, font: { family: "Inter", size: 11 } } }
         },
         plugins: {
-          legend: { position: "top", labels: { boxWidth: 12, font: { family: "Inter", size: 11 } } }
+          legend: {
+            position: "top",
+            labels: {
+              boxWidth: 10,
+              boxHeight: 10,
+              usePointStyle: true,
+              pointStyle: "circle",
+              color: textColor,
+              font: { family: "Inter", size: 11 }
+            }
+          }
         }
       }
     });
@@ -1150,11 +1647,15 @@ function renderDepartmentChart() {
   }
 }
 
+// =========================================================================
+// Export Handlers
+// =========================================================================
+
 function triggerExport(format) {
   sendToStreamlit(`export_${format}`, {
     filters: state.filters
   });
-  showToast(`Generating ${format.toUpperCase()} export...`, "info");
+  showToast(`Generating ${format.toUpperCase()} compliance export...`, "info");
 }
 
 function downloadBase64File(base64Data, filename, mimeType) {
@@ -1192,15 +1693,36 @@ function showToast(message, type = "info") {
 
   const toast = document.createElement("div");
   toast.className = `toast toast-${type}`;
+
+  let iconSvg = `<svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>`;
+  if (type === "success") {
+    iconSvg = `<svg width="16" height="16" fill="none" stroke="#10B981" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>`;
+  } else if (type === "warning") {
+    iconSvg = `<svg width="16" height="16" fill="none" stroke="#F59E0B" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>`;
+  } else if (type === "danger" || type === "error") {
+    iconSvg = `<svg width="16" height="16" fill="none" stroke="#EF4444" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>`;
+  }
+
   toast.innerHTML = `
-    <span>${type === 'success' ? '✓' : type === 'warning' ? '⚠' : type === 'danger' ? '🛑' : 'ℹ'}</span>
-    <span>${message}</span>
+    <span>${iconSvg}</span>
+    <span>${escapeHtml(message)}</span>
   `;
 
   container.appendChild(toast);
   setTimeout(() => {
     toast.style.opacity = "0";
-    toast.style.transform = "translateX(100%)";
-    setTimeout(() => toast.remove(), 300);
+    toast.style.transform = "translateY(12px)";
+    setTimeout(() => toast.remove(), 250);
   }, 3500);
+}
+
+// Utility: HTML Sanitizer
+function escapeHtml(str) {
+  if (str === null || str === undefined) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
