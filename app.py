@@ -1,11 +1,12 @@
 """
 EquipGuard - Device Warranty Management & Notification System.
 Main Streamlit Application coordinating backend operations, Google Drive Excel persistence,
-Firebase authentication, automated warranty calculation, PDF/Excel reports, and the modern HTML frontend.
+Firebase authentication, automated warranty calculation, PDF/Excel reports, and modern HTML frontend.
 """
 
 import os
 import json
+import time
 import base64
 import logging
 from pathlib import Path
@@ -38,7 +39,7 @@ st.set_page_config(
 
 # Declare Custom Streamlit Component serving HTML5 / CSS / JS Frontend
 equipguard_component = components.declare_component(
-    "equipguard_component",
+    "equipguard_main_component",
     path=str(config.FRONTEND_DIR)
 )
 
@@ -55,76 +56,80 @@ def initialize_app_state():
             logger.info(f"System startup check generated {count} new milestone warranty notifications.")
 
         st.session_state["initialized"] = True
+        st.session_state["authenticated"] = False
         st.session_state["user"] = None
-        st.session_state["last_nonce"] = None
+        st.session_state["toast"] = None
+        st.session_state["error"] = None
         st.session_state["download_payload"] = None
-        st.session_state["toast_message"] = None
-        st.session_state["is_logged_out"] = False
-
-    # Restore session from query parameters if available (persists on browser refresh)
-    if st.session_state.get("user") is None and not st.session_state.get("is_logged_out", False):
-        session_token = st.query_params.get("session")
-        if session_token:
-            valid, restored_user = auth_service.verify_id_token(session_token)
-            if valid and restored_user:
-                st.session_state["user"] = restored_user
-                logger.info(f"Session restored for {restored_user.get('email')} via query params.")
+        st.session_state["last_processed_req_id"] = None
 
 
-def handle_component_actions(component_event: dict):
-    """Dispatches frontend events to backend business logic and services."""
-    if not component_event or not isinstance(component_event, dict):
+def handle_component_actions(event: dict):
+    """Dispatches frontend events to backend business logic and services securely."""
+    if not event or not isinstance(event, dict):
         return
 
-    nonce = component_event.get("timestamp")
-    if nonce and nonce == st.session_state.get("last_nonce"):
+    req_id = event.get("requestId")
+    if not req_id or req_id == st.session_state.get("last_processed_req_id"):
         return
 
-    st.session_state["last_nonce"] = nonce
-    action = component_event.get("action")
-    payload = component_event.get("payload", {})
+    st.session_state["last_processed_req_id"] = req_id
+    action = event.get("action")
+    payload = event.get("payload", {})
     user_email = (st.session_state.get("user") or {}).get("email", "admin@equipguard.io")
 
-    logger.info(f"Handling frontend action: {action} by {user_email}")
+    logger.info(f"Processing backend action: {action} by {user_email}")
 
-    # 1. Login Action (Processed exclusively by Streamlit Python Backend via Firebase)
+    # 1. Login Action (Username/Password or Token Session Restoration)
     if action == "login":
-        email = payload.get("email")
+        id_token = payload.get("idToken")
+        email = payload.get("email") or payload.get("username")
         password = payload.get("password")
-        success, msg, user_dict = auth_service.sign_in(email, password)
-        logger.info(f"Auth sign_in result: success={success}, msg='{msg}', user={user_dict.get('email') if user_dict else None}")
-        if success and user_dict:
-            st.session_state["user"] = user_dict
-            st.session_state["auth_error"] = None
-            st.session_state["is_logged_out"] = False
-            token = user_dict.get("id_token") or user_dict.get("uid") or "admin_master_secrets"
-            st.query_params["session"] = token
-            # Log activity asynchronously so login transition is instantaneous
-            import threading
-            threading.Thread(
-                target=lambda: excel_db.log_activity(email, "User Login", "AUTH", f"User authenticated via {user_dict.get('auth_mode', 'Firebase')}."),
-                daemon=True
-            ).start()
-            st.session_state["toast_message"] = ("success", f"Welcome back, {user_dict.get('display_name')}!")
-            logger.info(f"User {email} successfully authenticated! Switching to dashboard.")
+
+        if id_token:
+            valid, restored_user = auth_service.verify_id_token(id_token)
+            if valid and restored_user:
+                st.session_state["authenticated"] = True
+                st.session_state["user"] = restored_user
+                st.session_state["toast"] = f"Welcome back, {restored_user.get('display_name')}!"
+                st.session_state["error"] = None
+                logger.info(f"Session restored for {restored_user.get('email')} via session token.")
+            else:
+                st.session_state["authenticated"] = False
+                st.session_state["user"] = None
+                st.session_state["error"] = None
         else:
-            st.session_state["auth_error"] = msg
-            st.session_state["toast_message"] = ("error", msg)
-            logger.warning(f"Login failed for {email}: {msg}")
+            success, msg, user_dict = auth_service.sign_in(email, password)
+            if success and user_dict:
+                st.session_state["authenticated"] = True
+                st.session_state["user"] = user_dict
+                st.session_state["toast"] = f"Welcome back, {user_dict.get('display_name')}!"
+                st.session_state["error"] = None
+                
+                # Asynchronously log user activity in Google Drive Excel
+                import threading
+                threading.Thread(
+                    target=lambda: excel_db.log_activity(
+                        email, "User Login", "AUTH", f"User authenticated via {user_dict.get('auth_mode', 'Firebase')}."
+                    ),
+                    daemon=True
+                ).start()
+                logger.info(f"User {email} successfully authenticated! Displaying dashboard.")
+            else:
+                st.session_state["authenticated"] = False
+                st.session_state["user"] = None
+                st.session_state["error"] = msg or "Authentication failed."
+                logger.warning(f"Login failed for {email}: {msg}")
+
         st.rerun()
 
     # 2. Logout Action
     elif action == "logout":
+        st.session_state["authenticated"] = False
         st.session_state["user"] = None
-        st.session_state["is_logged_out"] = True
-        try:
-            st.query_params.clear()
-        except Exception:
-            if "session" in st.query_params:
-                del st.query_params["session"]
-        st.session_state["toast_message"] = ("info", "Signed out successfully.")
+        st.session_state["toast"] = "Signed out successfully."
+        st.session_state["error"] = None
 
-        # Log activity asynchronously so logout renders instantaneously
         if user_email:
             import threading
             threading.Thread(
@@ -134,27 +139,14 @@ def handle_component_actions(component_event: dict):
 
         st.rerun()
 
-    # 2b. Restore Session Action (from frontend localStorage)
-    elif action == "restore_session":
-        if st.session_state.get("is_logged_out", False):
-            return
-        token = payload.get("token")
-        if token and not st.session_state.get("user"):
-            valid, restored_user = auth_service.verify_id_token(token)
-            if valid and restored_user:
-                st.session_state["user"] = restored_user
-                st.session_state["is_logged_out"] = False
-                st.query_params["session"] = token
-                logger.info(f"Restored session for {restored_user.get('email')} via component localStorage.")
-                st.rerun()
-
     # 3. Add Device Action
     elif action == "add_device":
         success, msg, new_dev = device_manager.add_device(payload, user_email)
         if success:
-            st.session_state["toast_message"] = ("success", msg)
+            st.session_state["toast"] = msg
+            st.session_state["error"] = None
         else:
-            st.session_state["toast_message"] = ("error", msg)
+            st.session_state["error"] = msg
         st.rerun()
 
     # 4. Update Device Action
@@ -162,9 +154,10 @@ def handle_component_actions(component_event: dict):
         device_id = payload.get("Device_ID")
         success, msg, updated_dev = device_manager.update_device(device_id, payload, user_email)
         if success:
-            st.session_state["toast_message"] = ("success", msg)
+            st.session_state["toast"] = msg
+            st.session_state["error"] = None
         else:
-            st.session_state["toast_message"] = ("error", msg)
+            st.session_state["error"] = msg
         st.rerun()
 
     # 5. Delete Device Action
@@ -172,9 +165,10 @@ def handle_component_actions(component_event: dict):
         device_id = payload.get("Device_ID")
         success, msg = device_manager.delete_device(device_id, user_email)
         if success:
-            st.session_state["toast_message"] = ("warning", msg)
+            st.session_state["toast"] = msg
+            st.session_state["error"] = None
         else:
-            st.session_state["toast_message"] = ("error", msg)
+            st.session_state["error"] = msg
         st.rerun()
 
     # 6. Mark Notification Read Action
@@ -188,12 +182,7 @@ def handle_component_actions(component_event: dict):
         notification_manager.mark_all_as_read()
         st.rerun()
 
-    # 8. Mark All Notifications Read Action
-    elif action == "mark_all_notifications_read":
-        notification_manager.mark_all_as_read()
-        st.rerun()
-
-    # 9. Export to Excel (.xlsx) Action
+    # 8. Export to Excel (.xlsx) Action
     elif action == "export_excel":
         devices = device_manager.get_all_devices_enriched()
         excel_bytes = report_service.generate_excel_report(devices)
@@ -205,7 +194,7 @@ def handle_component_actions(component_event: dict):
         }
         st.rerun()
 
-    # 11. Export to PDF Action
+    # 9. Export to PDF Action
     elif action == "export_pdf":
         devices = device_manager.get_all_devices_enriched()
         summary = report_service.get_analytics_summary()
@@ -218,13 +207,12 @@ def handle_component_actions(component_event: dict):
         }
         st.rerun()
 
-    # 12. Clear Download Payload
+    # 10. Clear Download Payload
     elif action == "clear_download_payload":
         st.session_state["download_payload"] = None
 
 
 def main():
-    logger.info("=== main() STARTED, user=%s ===", st.session_state.get("user"))
     initialize_app_state()
 
     # Prepare complete enriched state package for HTML frontend
@@ -240,17 +228,29 @@ def main():
         "file_id": cloud_file_id
     }
 
+    # Consume one-shot messages
+    toast_to_send = st.session_state.get("toast")
+    error_to_send = st.session_state.get("error")
+    toast_id = f"toast_{time.time()}_{abs(hash(toast_to_send))}" if toast_to_send else None
+
+    st.session_state["toast"] = None
+    st.session_state["error"] = None
+
     component_state = {
+        "authenticated": st.session_state.get("authenticated", False),
         "user": st.session_state.get("user"),
-        "auth_error": st.session_state.get("auth_error"),
         "devices": devices,
         "notifications": notifications,
         "analytics": analytics,
         "cloud_sync": cloud_sync_info,
-        "download_payload": st.session_state.get("download_payload")
+        "toast": toast_to_send,
+        "toast_id": toast_id,
+        "error": error_to_send,
+        "download_payload": st.session_state.get("download_payload"),
+        "timestamp": time.time()
     }
 
-    # Full-screen iframe CSS injection ensuring 100vw, 100vh true SaaS layout
+    # Full-screen iframe CSS injection ensuring 100vw, 100vh layout
     st.markdown("""
         <style>
             /* Completely hide Streamlit header, toolbar, hamburger menu, and footer */
@@ -292,18 +292,16 @@ def main():
         </style>
     """, unsafe_allow_html=True)
 
-    # Mount and execute the custom HTML5 component with stable static key
-    logger.info("Calling equipguard_component with user=%s", component_state.get("user") is not None)
-    component_event = equipguard_component(
-        args=component_state,
-        key="equipguard_component",
+    # Mount and execute custom HTML5 component
+    event_data = equipguard_component(
+        state=component_state,
+        key="equipguard_main_component",
         default=None
     )
-    logger.info("equipguard_component returned: %s", component_event.get("action") if component_event else None)
 
     # Process user actions coming from the frontend
-    if component_event:
-        handle_component_actions(component_event)
+    if event_data:
+        handle_component_actions(event_data)
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@
 
 // Global State
 const state = {
+  authenticated: false,
   user: null,
   devices: [],
   notifications: [],
@@ -23,6 +24,8 @@ const state = {
     categoryBar: null,
     departmentBar: null
   },
+  lastSeenToastId: null,
+  autoLoginAttempted: false,
   isStreamlitConnected: false
 };
 
@@ -30,23 +33,14 @@ const state = {
 // Streamlit Custom Component Protocol Bridge
 // =========================================================================
 
-function sendComponentReady() {
-  window.parent.postMessage({
-    isStreamlitMessage: true,
-    type: "streamlit:componentReady",
-    apiVersion: 1
-  }, "*");
-}
-
 function sendToStreamlit(action, payload = {}) {
   const message = {
     isStreamlitMessage: true,
     type: "streamlit:setComponentValue",
-    dataType: "json",
     value: {
       action: action,
       payload: payload,
-      timestamp: Date.now()
+      requestId: Date.now() + "_" + Math.random().toString(36).substring(2, 9),
     }
   };
   window.parent.postMessage(message, "*");
@@ -61,128 +55,122 @@ function notifyFrameHeight() {
   window.parent.postMessage({
     isStreamlitMessage: true,
     type: "streamlit:setFrameHeight",
-    height: height
+    height: Math.max(height, 850)
   }, "*");
 }
 
 // Listen for incoming state from Streamlit backend
 window.addEventListener("message", function(event) {
-  if (event.data && event.data.type === "streamlit:render") {
+  if (!event.data) return;
+  if (event.data.type === "streamlit:render") {
     state.isStreamlitConnected = true;
-    if (window._readyPingInterval) {
-      clearInterval(window._readyPingInterval);
-      window._readyPingInterval = null;
-    }
-    let args = event.data.args;
-    // Unwrap nested args if passed as equipguard_component(args=...)
-    if (args && args.args) {
-      args = args.args;
-    }
-    if (args) {
-      handleBackendSync(args);
-    }
+    const args = event.data.args || {};
+    const serverState = args.state || args.args || args;
+    applyServerState(serverState);
   }
 });
 
-// Send initial componentReady and keep pinging until Streamlit acknowledges
-sendComponentReady();
-window._readyPingInterval = setInterval(() => {
-  if (state.isStreamlitConnected) {
-    clearInterval(window._readyPingInterval);
-    window._readyPingInterval = null;
-  } else {
-    sendComponentReady();
-  }
-}, 250);
-
-setTimeout(() => {
-  if (window._readyPingInterval) {
-    clearInterval(window._readyPingInterval);
-    window._readyPingInterval = null;
-  }
-}, 20000);
-
-// =========================================================================
-// Initialization & Demo Mock Data (Standalone Fallback)
-// =========================================================================
+window.addEventListener("load", function() {
+  window.parent.postMessage({
+    isStreamlitMessage: true,
+    type: "streamlit:componentReady",
+    apiVersion: 1
+  }, "*");
+  notifyFrameHeight();
+});
 
 document.addEventListener("DOMContentLoaded", function() {
   initEventListeners();
   notifyFrameHeight();
-
-  // Check for persisted session in localStorage
-  try {
-    const savedToken = localStorage.getItem("equipguard_token");
-    if (savedToken && !state.user) {
-      sendToStreamlit("restore_session", { token: savedToken });
-    }
-  } catch(e) {}
-
-  if (!state.user) {
+  if (!state.authenticated && !state.user) {
     showLoginView();
   }
 });
 
-function handleBackendSync(rawArgs) {
-  const args = (rawArgs && rawArgs.args) ? rawArgs.args : (rawArgs || {});
-  if (args.devices) {
-    state.devices = args.devices;
-  }
-  if (args.notifications) {
-    state.notifications = args.notifications;
-  }
-  if (args.analytics) {
-    state.analytics = args.analytics;
-  }
-  if (args.cloud_sync) {
-    state.cloudSync = args.cloud_sync;
+function applyServerState(serverState) {
+  if (!serverState) return;
+
+  state.authenticated = !!serverState.authenticated;
+  state.user = serverState.user || null;
+
+  if (serverState.devices) state.devices = serverState.devices;
+  if (serverState.notifications) state.notifications = serverState.notifications;
+  if (serverState.analytics) state.analytics = serverState.analytics;
+  if (serverState.cloud_sync) state.cloudSync = serverState.cloud_sync;
+
+  // Persist session token if authenticated
+  if (state.authenticated && state.user && state.user.token) {
+    try {
+      localStorage.setItem("equipguard_session_token", state.user.token);
+    } catch(e) {}
   }
 
-  if (args.user) {
-    state.user = args.user;
+  // Handle server-side errors
+  if (serverState.error) {
     try {
-      localStorage.setItem("equipguard_token", args.user.id_token || args.user.uid || "admin_master_secrets");
-      localStorage.setItem("equipguard_user", JSON.stringify(args.user));
+      localStorage.removeItem("equipguard_session_token");
     } catch(e) {}
-    hideLoginAlert();
-    showAppView();
-  } else {
-    state.user = null;
-    try {
-      localStorage.removeItem("equipguard_token");
-      localStorage.removeItem("equipguard_user");
-    } catch(e) {}
-    showLoginView();
-  }
-
-  // Handle server-side authentication error feedback
-  if (args.auth_error) {
-    showLoginAlert(args.auth_error);
+    showLoginAlert(serverState.error);
     const submitBtn = document.getElementById("btn-login-submit");
     if (submitBtn) {
       submitBtn.disabled = false;
       submitBtn.innerText = "Sign In to Dashboard";
     }
+  } else {
+    hideLoginAlert();
+  }
+
+  // Handle toast notifications without duplication
+  if (serverState.toast) {
+    const tId = serverState.toast_id || serverState.toast;
+    if (tId !== state.lastSeenToastId) {
+      state.lastSeenToastId = tId;
+      showToast(serverState.toast, "info");
+    }
   }
 
   // Handle direct file download requested from backend
-  if (args.download_payload && args.download_payload.data) {
+  if (serverState.download_payload && serverState.download_payload.data) {
     downloadBase64File(
-      args.download_payload.data,
-      args.download_payload.filename,
-      args.download_payload.mime
+      serverState.download_payload.data,
+      serverState.download_payload.filename,
+      serverState.download_payload.mime
     );
     sendToStreamlit("clear_download_payload");
   }
 
-  try { updateCloudSyncUI(); } catch (e) { console.warn("updateCloudSyncUI:", e); }
-  try { updateUserInfoUI(); } catch (e) { console.warn("updateUserInfoUI:", e); }
-  try { renderDashboard(); } catch (e) { console.warn("renderDashboard:", e); }
-  try { renderDevicesTable(); } catch (e) { console.warn("renderDevicesTable:", e); }
-  try { renderWarrantiesTable(); } catch (e) { console.warn("renderWarrantiesTable:", e); }
-  try { renderNotificationsList(); } catch (e) { console.warn("renderNotificationsList:", e); }
-  try { renderReportsView(); } catch (e) { console.warn("renderReportsView:", e); }
-  try { notifyFrameHeight(); } catch (e) { console.warn("notifyFrameHeight:", e); }
+  // Auto-login check if not authenticated yet and saved session token exists
+  if (!state.authenticated && !state.autoLoginAttempted) {
+    state.autoLoginAttempted = true;
+    try {
+      const savedToken = localStorage.getItem("equipguard_session_token");
+      if (savedToken) {
+        const submitBtn = document.getElementById("btn-login-submit");
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.innerText = "Restoring session...";
+        }
+        sendToStreamlit("login", { idToken: savedToken });
+        return;
+      }
+    } catch(e) {}
+  }
+
+  // Render proper view
+  if (state.authenticated && state.user) {
+    showAppView();
+    updateUserInfoUI();
+    updateCloudSyncUI();
+    try { renderDashboard(); } catch (e) { console.warn("renderDashboard:", e); }
+    try { renderDevicesTable(); } catch (e) { console.warn("renderDevicesTable:", e); }
+    try { renderWarrantiesTable(); } catch (e) { console.warn("renderWarrantiesTable:", e); }
+    try { renderNotificationsList(); } catch (e) { console.warn("renderNotificationsList:", e); }
+    try { renderReportsView(); } catch (e) { console.warn("renderReportsView:", e); }
+  } else {
+    showLoginView();
+  }
+
+  notifyFrameHeight();
 }
 
 // =========================================================================
@@ -416,13 +404,15 @@ function handleLoginSubmit(e) {
 
 function handleLogout() {
   try {
+    localStorage.removeItem("equipguard_session_token");
     localStorage.removeItem("equipguard_token");
     localStorage.removeItem("equipguard_user");
     localStorage.clear();
     sessionStorage.clear();
   } catch(e) {}
+  state.authenticated = false;
   state.user = null;
-  sendToStreamlit("logout");
+  sendToStreamlit("logout", {});
   showLoginView();
   showToast("Logged out successfully.", "info");
 }
